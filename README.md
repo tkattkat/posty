@@ -1,6 +1,12 @@
-# Posty
+<p align="center">
+  <img src="assets/logo.png" width="128" height="128" alt="Posty">
+</p>
 
+<h1 align="center">Posty</h1>
+
+<p align="center">
 A fast, lightweight, privacy-focused API client. No sign-up required.
+</p>
 
 ## Why Posty?
 
