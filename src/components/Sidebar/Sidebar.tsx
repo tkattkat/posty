@@ -4,7 +4,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { useCollectionStore } from '../../stores/collectionStore'
 import { useRequestStore } from '../../stores/requestStore'
 import { ImportModal } from '../ImportModal/ImportModal'
-import type { Collection, Request, HttpRequest } from '../../types'
+import type { Collection, HttpRequest } from '../../types'
 
 const methodBadgeClass: Record<string, string> = {
   GET: 'method-badge method-badge-get',
@@ -95,7 +95,10 @@ function HistoryPanel() {
             </span>
           )}
           <span className="text-[13px] text-text-tertiary truncate flex-1 group-hover:text-text-secondary transition-colors">
-            {'url' in entry.request ? new URL(entry.request.url).pathname : entry.request.name}
+            {entry.request.type === 'http' ? (() => {
+              try { return new URL((entry.request as HttpRequest).url).pathname }
+              catch { return (entry.request as HttpRequest).url || entry.request.name }
+            })() : entry.request.name}
           </span>
           <span className="text-[10px] text-text-muted tabular-nums font-mono">
             {new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

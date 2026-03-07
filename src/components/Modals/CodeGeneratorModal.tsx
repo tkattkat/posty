@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { X, Copy, Check } from 'lucide-react'
-import { generateCode, languageLabels, CodeLanguage } from '../../lib/codegen'
+import { generateCode, languageLabels, type CodeLanguage } from '../../lib/codegen'
 import type { HttpRequest } from '../../types'
 
 interface CodeGeneratorModalProps {

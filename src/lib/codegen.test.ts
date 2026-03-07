@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { generateCode, CodeLanguage } from './codegen'
+import { generateCode } from './codegen'
 import type { HttpRequest } from '../types'
 
 const createBasicRequest = (): HttpRequest => ({

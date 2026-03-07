@@ -167,7 +167,6 @@ export function RequestPanel() {
     setResponse,
     setLoading,
     isLoading,
-    response,
   } = useRequestStore()
   const { addToHistory } = useCollectionStore()
   const [activeSubTab, setActiveSubTab] = useState<'params' | 'headers' | 'body' | 'auth'>('params')
