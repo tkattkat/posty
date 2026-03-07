@@ -1,0 +1,483 @@
+use openapiv3::{OpenAPI, Schema, SchemaKind, Type};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::collections::HashMap;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ImportedCollection {
+    pub name: String,
+    pub description: Option<String>,
+    pub requests: Vec<ImportedRequest>,
+    pub folders: Vec<ImportedCollection>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ImportedRequest {
+    pub id: String,
+    pub name: String,
+    pub method: String,
+    pub url: String,
+    pub headers: Vec<KeyValue>,
+    pub params: Vec<KeyValue>,
+    pub body: Option<RequestBody>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct KeyValue {
+    pub id: String,
+    pub key: String,
+    pub value: String,
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RequestBody {
+    pub r#type: String,
+    pub content: String,
+}
+
+/// Generate example JSON body from schema
+fn generate_example_json(schema: &Schema, openapi: &OpenAPI, depth: usize) -> Value {
+    if depth > 5 {
+        return json!({});
+    }
+
+    match &schema.schema_kind {
+        SchemaKind::Type(Type::Object(obj)) => {
+            let mut map = serde_json::Map::new();
+            for (name, prop_schema) in &obj.properties {
+                match prop_schema {
+                    openapiv3::ReferenceOr::Item(prop) => {
+                        map.insert(name.clone(), generate_example_json(prop, openapi, depth + 1));
+                    }
+                    openapiv3::ReferenceOr::Reference { reference } => {
+                        if let Some(resolved) = resolve_schema_ref(reference, openapi) {
+                            map.insert(name.clone(), generate_example_json(resolved, openapi, depth + 1));
+                        }
+                    }
+                }
+            }
+            Value::Object(map)
+        }
+        SchemaKind::Type(Type::Array(arr)) => {
+            if let Some(items) = &arr.items {
+                match items {
+                    openapiv3::ReferenceOr::Item(item_schema) => {
+                        json!([generate_example_json(item_schema, openapi, depth + 1)])
+                    }
+                    openapiv3::ReferenceOr::Reference { reference } => {
+                        if let Some(resolved) = resolve_schema_ref(reference, openapi) {
+                            json!([generate_example_json(resolved, openapi, depth + 1)])
+                        } else {
+                            json!([])
+                        }
+                    }
+                }
+            } else {
+                json!([])
+            }
+        }
+        SchemaKind::Type(Type::String(s)) => {
+            use openapiv3::StringFormat;
+            use openapiv3::VariantOrUnknownOrEmpty;
+            match &s.format {
+                VariantOrUnknownOrEmpty::Item(StringFormat::Date) => json!("2024-01-01"),
+                VariantOrUnknownOrEmpty::Item(StringFormat::DateTime) => json!("2024-01-01T00:00:00Z"),
+                VariantOrUnknownOrEmpty::Unknown(f) if f == "email" => json!("user@example.com"),
+                VariantOrUnknownOrEmpty::Unknown(f) if f == "uuid" => json!("550e8400-e29b-41d4-a716-446655440000"),
+                _ => json!("string"),
+            }
+        }
+        SchemaKind::Type(Type::Integer(_)) => json!(0),
+        SchemaKind::Type(Type::Number(_)) => json!(0.0),
+        SchemaKind::Type(Type::Boolean { .. }) => json!(true),
+        _ => json!(null),
+    }
+}
+
+/// Resolve a $ref to its schema
+fn resolve_schema_ref<'a>(reference: &str, openapi: &'a OpenAPI) -> Option<&'a Schema> {
+    let parts: Vec<&str> = reference.split('/').collect();
+    if parts.len() >= 4 && parts[1] == "components" && parts[2] == "schemas" {
+        let schema_name = parts[3];
+        if let Some(components) = &openapi.components {
+            if let Some(openapiv3::ReferenceOr::Item(schema)) = components.schemas.get(schema_name) {
+                return Some(schema);
+            }
+        }
+    }
+    None
+}
+
+#[tauri::command]
+pub fn parse_openapi_spec(spec_content: String) -> Result<ImportedCollection, String> {
+    let openapi: OpenAPI =
+        serde_json::from_str(&spec_content).or_else(|_| serde_yaml::from_str(&spec_content))
+            .map_err(|e| format!("Failed to parse OpenAPI spec: {}", e))?;
+
+    let title = openapi.info.title.clone();
+    let description = openapi.info.description.clone();
+
+    // Get base URL from servers
+    let base_url = openapi
+        .servers
+        .first()
+        .map(|s| s.url.clone())
+        .unwrap_or_else(|| "{{baseUrl}}".to_string());
+
+    let mut requests: Vec<ImportedRequest> = Vec::new();
+    let mut folders: HashMap<String, Vec<ImportedRequest>> = HashMap::new();
+
+    // Parse paths
+    for (path, path_item) in openapi.paths.paths.iter() {
+        if let openapiv3::ReferenceOr::Item(item) = path_item {
+            // Collect path-level parameters
+            let path_params: Vec<&openapiv3::Parameter> = item
+                .parameters
+                .iter()
+                .filter_map(|p| {
+                    if let openapiv3::ReferenceOr::Item(param) = p {
+                        Some(param)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            // Process each HTTP method
+            let methods = [
+                ("GET", &item.get),
+                ("POST", &item.post),
+                ("PUT", &item.put),
+                ("PATCH", &item.patch),
+                ("DELETE", &item.delete),
+                ("OPTIONS", &item.options),
+                ("HEAD", &item.head),
+            ];
+
+            for (method, operation) in methods {
+                if let Some(op) = operation {
+                    let op_name = op
+                        .summary
+                        .clone()
+                        .or_else(|| op.operation_id.clone())
+                        .unwrap_or_else(|| format!("{} {}", method, path));
+
+                    // Extract parameters (combine path-level and operation-level)
+                    let mut params: Vec<KeyValue> = Vec::new();
+                    let mut headers: Vec<KeyValue> = Vec::new();
+
+                    // Helper to process a parameter
+                    let mut process_param = |param: &openapiv3::Parameter| {
+                        let data = param.parameter_data_ref();
+                        let description = data.description.clone();
+
+                        let kv = KeyValue {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            key: data.name.clone(),
+                            value: String::new(),
+                            enabled: data.required,
+                            description,
+                        };
+
+                        match param {
+                            openapiv3::Parameter::Query { .. } => params.push(kv),
+                            openapiv3::Parameter::Header { .. } => headers.push(kv),
+                            openapiv3::Parameter::Path { .. } => {
+                                // Add path params to params list with placeholder value
+                                let mut path_kv = kv;
+                                path_kv.value = format!("{{{}}}", path_kv.key);
+                                path_kv.enabled = true; // Path params are always required
+                                params.push(path_kv);
+                            }
+                            openapiv3::Parameter::Cookie { .. } => {
+                                // Skip cookies for now
+                            }
+                        }
+                    };
+
+                    // Process path-level parameters first
+                    for param in &path_params {
+                        process_param(param);
+                    }
+
+                    // Process operation-level parameters
+                    for param_ref in &op.parameters {
+                        if let openapiv3::ReferenceOr::Item(param) = param_ref {
+                            process_param(param);
+                        }
+                    }
+
+                    // Extract request body and add Content-Type header
+                    let body = if let Some(ref body_ref) = op.request_body {
+                        if let openapiv3::ReferenceOr::Item(body) = body_ref {
+                            if let Some(media_type) = body.content.get("application/json") {
+                                // Add Content-Type header
+                                headers.push(KeyValue {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    key: "Content-Type".to_string(),
+                                    value: "application/json".to_string(),
+                                    enabled: true,
+                                    description: None,
+                                });
+
+                                // Generate example body from schema
+                                let content = if let Some(schema_ref) = &media_type.schema {
+                                    match schema_ref {
+                                        openapiv3::ReferenceOr::Item(schema) => {
+                                            let example = generate_example_json(schema, &openapi, 0);
+                                            serde_json::to_string_pretty(&example).unwrap_or_else(|_| "{}".to_string())
+                                        }
+                                        openapiv3::ReferenceOr::Reference { reference } => {
+                                            if let Some(resolved) = resolve_schema_ref(reference, &openapi) {
+                                                let example = generate_example_json(resolved, &openapi, 0);
+                                                serde_json::to_string_pretty(&example).unwrap_or_else(|_| "{}".to_string())
+                                            } else {
+                                                "{}".to_string()
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    "{}".to_string()
+                                };
+
+                                Some(RequestBody {
+                                    r#type: "json".to_string(),
+                                    content,
+                                })
+                            } else if body.content.contains_key("application/x-www-form-urlencoded") {
+                                headers.push(KeyValue {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    key: "Content-Type".to_string(),
+                                    value: "application/x-www-form-urlencoded".to_string(),
+                                    enabled: true,
+                                    description: None,
+                                });
+                                Some(RequestBody {
+                                    r#type: "form".to_string(),
+                                    content: String::new(),
+                                })
+                            } else if body.content.contains_key("text/plain") {
+                                headers.push(KeyValue {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    key: "Content-Type".to_string(),
+                                    value: "text/plain".to_string(),
+                                    enabled: true,
+                                    description: None,
+                                });
+                                Some(RequestBody {
+                                    r#type: "text".to_string(),
+                                    content: String::new(),
+                                })
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    let request = ImportedRequest {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        name: op_name,
+                        method: method.to_string(),
+                        url: format!("{}{}", base_url, path),
+                        headers,
+                        params,
+                        body,
+                    };
+
+                    // Group by tag if available
+                    if let Some(tag) = op.tags.first() {
+                        folders.entry(tag.clone()).or_default().push(request);
+                    } else {
+                        requests.push(request);
+                    }
+                }
+            }
+        }
+    }
+
+    // Convert folders map to folder structs (sorted alphabetically)
+    let mut folder_structs: Vec<ImportedCollection> = folders
+        .into_iter()
+        .map(|(name, reqs)| ImportedCollection {
+            name,
+            description: None,
+            requests: reqs,
+            folders: Vec::new(),
+        })
+        .collect();
+    folder_structs.sort_by(|a, b| a.name.cmp(&b.name));
+
+    Ok(ImportedCollection {
+        name: title,
+        description,
+        requests,
+        folders: folder_structs,
+    })
+}
+
+#[tauri::command]
+pub async fn fetch_and_parse_openapi(url: String) -> Result<ImportedCollection, String> {
+    let client = reqwest::Client::new();
+    let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    let content = response.text().await.map_err(|e| e.to_string())?;
+    parse_openapi_spec(content)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_simple_openapi_spec() {
+        let spec = r#"
+        {
+            "openapi": "3.0.0",
+            "info": {
+                "title": "Test API",
+                "version": "1.0.0"
+            },
+            "servers": [
+                {"url": "https://api.example.com"}
+            ],
+            "paths": {
+                "/users": {
+                    "get": {
+                        "summary": "List users",
+                        "responses": {
+                            "200": {
+                                "description": "Success"
+                            }
+                        }
+                    },
+                    "post": {
+                        "summary": "Create user",
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object"
+                                    }
+                                }
+                            }
+                        },
+                        "responses": {
+                            "201": {
+                                "description": "Created"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        "#;
+
+        let result = parse_openapi_spec(spec.to_string());
+        assert!(result.is_ok());
+
+        let collection = result.unwrap();
+        assert_eq!(collection.name, "Test API");
+        assert_eq!(collection.requests.len(), 2);
+
+        let get_request = collection.requests.iter().find(|r| r.method == "GET").unwrap();
+        assert_eq!(get_request.name, "List users");
+        assert_eq!(get_request.url, "https://api.example.com/users");
+
+        let post_request = collection.requests.iter().find(|r| r.method == "POST").unwrap();
+        assert_eq!(post_request.name, "Create user");
+        assert!(post_request.body.is_some());
+    }
+
+    #[test]
+    fn test_parse_openapi_with_tags() {
+        let spec = r#"
+        {
+            "openapi": "3.0.0",
+            "info": {
+                "title": "Tagged API",
+                "version": "1.0.0"
+            },
+            "paths": {
+                "/users": {
+                    "get": {
+                        "tags": ["Users"],
+                        "summary": "List users",
+                        "responses": { "200": { "description": "OK" } }
+                    }
+                },
+                "/posts": {
+                    "get": {
+                        "tags": ["Posts"],
+                        "summary": "List posts",
+                        "responses": { "200": { "description": "OK" } }
+                    }
+                }
+            }
+        }
+        "#;
+
+        let result = parse_openapi_spec(spec.to_string());
+        assert!(result.is_ok());
+
+        let collection = result.unwrap();
+        assert_eq!(collection.folders.len(), 2);
+
+        let users_folder = collection.folders.iter().find(|f| f.name == "Users");
+        assert!(users_folder.is_some());
+        assert_eq!(users_folder.unwrap().requests.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_openapi_with_parameters() {
+        let spec = r#"
+        {
+            "openapi": "3.0.0",
+            "info": {
+                "title": "Param API",
+                "version": "1.0.0"
+            },
+            "paths": {
+                "/users": {
+                    "get": {
+                        "summary": "List users",
+                        "parameters": [
+                            {
+                                "name": "limit",
+                                "in": "query",
+                                "required": false,
+                                "schema": { "type": "integer" }
+                            },
+                            {
+                                "name": "Authorization",
+                                "in": "header",
+                                "required": true,
+                                "schema": { "type": "string" }
+                            }
+                        ],
+                        "responses": { "200": { "description": "OK" } }
+                    }
+                }
+            }
+        }
+        "#;
+
+        let result = parse_openapi_spec(spec.to_string());
+        assert!(result.is_ok());
+
+        let collection = result.unwrap();
+        let request = &collection.requests[0];
+
+        assert_eq!(request.params.len(), 1);
+        assert_eq!(request.params[0].key, "limit");
+
+        assert_eq!(request.headers.len(), 1);
+        assert_eq!(request.headers[0].key, "Authorization");
+        assert!(request.headers[0].enabled); // required = true
+    }
+}
