@@ -1,0 +1,461 @@
+openapi: 3.0.3
+info:
+  title: Posty Mock Runner API
+  version: 1.0.0
+  description: |
+    Local demo API for Posty's collection runner and request tests.
+
+    Start the mock server with:
+    `pnpm mock-api-server`
+
+    Then import this file into Posty as a local OpenAPI spec.
+servers:
+  - url: http://127.0.0.1:4011
+    description: Local mock API server
+tags:
+  - name: auth
+  - name: users
+  - name: projects
+  - name: diagnostics
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: demo@example.com
+        password:
+          type: string
+          example: super-secret-password
+    LoginResponse:
+      type: object
+      required:
+        - token
+        - user
+      properties:
+        token:
+          type: string
+          example: mock-token-123
+        user:
+          $ref: '#/components/schemas/User'
+    User:
+      type: object
+      required:
+        - id
+        - email
+      properties:
+        id:
+          type: string
+          example: user-1
+        email:
+          type: string
+          format: email
+          example: demo@example.com
+        name:
+          type: string
+          example: Posty Demo
+        role:
+          type: string
+          example: admin
+    ProjectCreateRequest:
+      type: object
+      required:
+        - name
+        - environment
+      properties:
+        name:
+          type: string
+          example: Runner demo project
+        environment:
+          type: string
+          enum: [staging, production]
+          example: staging
+    Project:
+      type: object
+      required:
+        - id
+        - status
+        - ownerId
+      properties:
+        id:
+          type: string
+          example: project-1
+        status:
+          type: string
+          example: ready
+        ownerId:
+          type: string
+          example: user-1
+        url:
+          type: string
+          format: uri
+          example: https://project-1.local.posty.dev
+        region:
+          type: string
+          example: us-east-1
+    ProjectCreateResponse:
+      type: object
+      required:
+        - project
+      properties:
+        project:
+          type: object
+          required:
+            - id
+            - name
+            - environment
+          properties:
+            id:
+              type: string
+              example: project-1
+            name:
+              type: string
+              example: Runner demo project
+            environment:
+              type: string
+              example: staging
+    ProjectRun:
+      type: object
+      required:
+        - id
+        - status
+        - durationMs
+      properties:
+        id:
+          type: string
+          example: run-1
+        status:
+          type: string
+          example: success
+        durationMs:
+          type: integer
+          example: 120
+    ProjectRunsResponse:
+      type: object
+      required:
+        - projectId
+        - runs
+      properties:
+        projectId:
+          type: string
+          example: project-1
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectRun'
+    DeploymentRequest:
+      type: object
+      required:
+        - environment
+        - version
+      properties:
+        environment:
+          type: string
+          enum: [staging, production]
+          example: staging
+        version:
+          type: string
+          example: 2026.03.08
+    DeploymentResponse:
+      type: object
+      required:
+        - deployment
+      properties:
+        deployment:
+          type: object
+          required:
+            - id
+            - projectId
+            - environment
+            - version
+            - status
+          properties:
+            id:
+              type: string
+              example: deploy-project-1
+            projectId:
+              type: string
+              example: project-1
+            environment:
+              type: string
+              example: staging
+            version:
+              type: string
+              example: 2026.03.08
+            status:
+              type: string
+              example: queued
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          example: Unauthorized
+paths:
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Login and receive a bearer token
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: demo@example.com
+              password: super-secret-password
+      responses:
+        '200':
+          description: Login succeeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              example:
+                token: mock-token-123
+                user:
+                  id: user-1
+                  email: demo@example.com
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/me:
+    get:
+      tags: [users]
+      summary: Get the currently authenticated user
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+              example:
+                id: user-1
+                email: demo@example.com
+                name: Posty Demo
+                role: admin
+        '401':
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /projects:
+    post:
+      tags: [projects]
+      summary: Create a new project
+      operationId: createProject
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreateRequest'
+            example:
+              name: Runner demo project
+              environment: staging
+      responses:
+        '201':
+          description: Project created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectCreateResponse'
+              example:
+                project:
+                  id: project-1
+                  name: Runner demo project
+                  environment: staging
+        '401':
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /projects/{projectId}:
+    get:
+      tags: [projects]
+      summary: Fetch a project by ID
+      operationId: getProject
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: Project identifier returned from createProject
+          schema:
+            type: string
+          example: project-1
+      responses:
+        '200':
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+              example:
+                id: project-1
+                status: ready
+                ownerId: user-1
+                url: https://project-1.local.posty.dev
+                region: us-east-1
+        '401':
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /projects/{projectId}/runs:
+    get:
+      tags: [projects]
+      summary: List recent runs for a project
+      operationId: listProjectRuns
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: project-1
+        - name: status
+          in: query
+          required: false
+          description: Filter runs by status
+          schema:
+            type: string
+            enum: [success, failed, queued]
+          example: success
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of runs to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5
+          example: 2
+      responses:
+        '200':
+          description: Recent runs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectRunsResponse'
+              example:
+                projectId: project-1
+                runs:
+                  - id: run-1
+                    status: success
+                    durationMs: 120
+                  - id: run-2
+                    status: success
+                    durationMs: 165
+        '401':
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /projects/{projectId}/deploy:
+    post:
+      tags: [projects]
+      summary: Queue a deployment for a project
+      operationId: deployProject
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: project-1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeploymentRequest'
+            example:
+              environment: staging
+              version: 2026.03.08
+      responses:
+        '202':
+          description: Deployment queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+              example:
+                deployment:
+                  id: deploy-project-1
+                  projectId: project-1
+                  environment: staging
+                  version: 2026.03.08
+                  status: queued
+        '401':
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /slow:
+    get:
+      tags: [diagnostics]
+      summary: Simulate a slow but successful endpoint
+      operationId: getSlowResponse
+      responses:
+        '200':
+          description: Slow success
+          content:
+            application/json:
+              example:
+                ok: true
+                delayed: true
+
+  /error:
+    get:
+      tags: [diagnostics]
+      summary: Simulate a failing endpoint
+      operationId: getErrorResponse
+      responses:
+        '500':
+          description: Intentional server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Intentional mock failure

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Request, HttpRequest, Tab, HttpResponse } from '../types'
+import type { Request, HttpRequest, Tab, HttpResponse, RequestExecutionResult } from '../types'
 
 interface TabSourceContext {
   collectionId?: string
@@ -19,12 +19,15 @@ const createNewHttpRequest = (): HttpRequest => ({
     type: 'none',
     content: '',
   },
+  tests: [],
+  extractions: [],
 })
 
 interface RequestStore {
   tabs: Tab[]
   activeTabId: string | null
   response: HttpResponse | null
+  executionResult: RequestExecutionResult | null
   isLoading: boolean
 
   // Actions
@@ -33,6 +36,7 @@ interface RequestStore {
   setActiveTab: (tabId: string) => void
   updateRequest: (tabId: string, updates: Partial<Request>) => void
   setResponse: (response: HttpResponse | null) => void
+  setExecutionResult: (result: RequestExecutionResult | null) => void
   setLoading: (loading: boolean) => void
   getActiveRequest: () => Request | null
   updateActiveRequest: (updates: Partial<Request>) => void
@@ -44,6 +48,7 @@ export const useRequestStore = create<RequestStore>()(
       tabs: [],
       activeTabId: null,
       response: null,
+      executionResult: null,
       isLoading: false,
 
       addTab: (request, source) => {
@@ -91,7 +96,7 @@ export const useRequestStore = create<RequestStore>()(
       },
 
       setActiveTab: (tabId) => {
-        set({ activeTabId: tabId, response: null })
+        set({ activeTabId: tabId, response: null, executionResult: null })
       },
 
       updateRequest: (tabId, updates) => {
@@ -106,6 +111,10 @@ export const useRequestStore = create<RequestStore>()(
 
       setResponse: (response) => {
         set({ response })
+      },
+
+      setExecutionResult: (executionResult) => {
+        set({ executionResult })
       },
 
       setLoading: (loading) => {

@@ -6,8 +6,9 @@ import { isCurlCommand, curlToHttpRequest } from '../../lib/curlParser'
 import { ResponsePanel } from '../ResponsePanel/ResponsePanel'
 import { CodeGeneratorModal } from '../Modals/CodeGeneratorModal'
 import type { HttpMethod, KeyValue, SecretVariable } from '../../types'
-import { invoke } from '@tauri-apps/api/core'
-import { createSecretReference, getSecretReferenceName, resolveRequestHeaderSecrets } from '../../lib/secrets'
+import { createSecretReference, getSecretReferenceName } from '../../lib/secrets'
+import { createExecutionErrorResponse, executeHttpRequest } from '../../lib/requestExecution'
+import { RequestTestsEditor } from './RequestTestsEditor'
 
 const methods: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD']
 
@@ -205,11 +206,13 @@ export function RequestPanel() {
     getActiveRequest,
     updateActiveRequest,
     setResponse,
+    setExecutionResult,
     setLoading,
     isLoading,
+    executionResult,
   } = useRequestStore()
   const { addToHistory, findCollectionById, findCollectionByRequestId } = useCollectionStore()
-  const [activeSubTab, setActiveSubTab] = useState<'params' | 'headers' | 'body' | 'auth'>('params')
+  const [activeSubTab, setActiveSubTab] = useState<'params' | 'headers' | 'body' | 'auth' | 'tests'>('params')
   const [showMethodDropdown, setShowMethodDropdown] = useState(false)
   const [showCodeGen, setShowCodeGen] = useState(false)
   const requestSplitRef = useRef<HTMLDivElement | null>(null)
@@ -268,55 +271,29 @@ export function RequestPanel() {
 
     setLoading(true)
     setResponse(null)
+    setExecutionResult(null)
 
     try {
-      const requestToSend = resolveRequestHeaderSecrets(httpRequest, activeSecrets)
-      const response = await invoke<{
-        status: number
-        status_text: string
-        headers: Record<string, string>
-        body: string
-        time: number
-        size: number
-      }>('send_http_request', {
-        method: requestToSend.method,
-        url: requestToSend.url,
-        headers: requestToSend.headers
-          .filter((h) => h.enabled && h.key)
-          .reduce((acc, h) => ({ ...acc, [h.key]: h.value }), {}),
-        body: requestToSend.body.type !== 'none' ? requestToSend.body.content : null,
+      const result = await executeHttpRequest(httpRequest, {
+        secrets: activeSecrets,
       })
 
-      const httpResponse = {
-        status: response.status,
-        statusText: response.status_text,
-        headers: response.headers,
-        body: response.body,
-        time: response.time,
-        size: response.size,
-      }
-
-      setResponse(httpResponse)
+      setResponse(result.response)
+      setExecutionResult(result)
       addToHistory({
         request: httpRequest,
-        response: httpResponse,
+        response: result.response,
         timestamp: Date.now(),
         sourceCollectionId: activeCollection?.id,
         sourceRequestId: activeTab?.sourceRequestId,
       })
     } catch (error) {
-      setResponse({
-        status: 0,
-        statusText: 'Error',
-        headers: {},
-        body: String(error),
-        time: 0,
-        size: 0,
-      })
+      setResponse(createExecutionErrorResponse(error))
+      setExecutionResult(null)
     } finally {
       setLoading(false)
     }
-  }, [activeCollection?.id, activeSecrets, activeTab?.sourceRequestId, addToHistory, httpRequest, setLoading, setResponse])
+  }, [activeCollection?.id, activeSecrets, activeTab?.sourceRequestId, addToHistory, httpRequest, setExecutionResult, setLoading, setResponse])
 
   // Keyboard shortcut to send
   useEffect(() => {
@@ -496,7 +473,7 @@ export function RequestPanel() {
         <div className="request-pane flex flex-col min-h-0">
           {/* Sub Tabs */}
           <div className="flex gap-1 px-4 py-2 border-b border-border flex-shrink-0">
-            {(['params', 'headers', 'body', 'auth'] as const).map((tab) => (
+            {(['params', 'headers', 'body', 'auth', 'tests'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveSubTab(tab)}
@@ -511,6 +488,11 @@ export function RequestPanel() {
                 {tab === 'headers' && httpRequest && httpRequest.headers.length > 0 && (
                   <span className="text-[10px] text-text-muted tabular-nums">
                     {httpRequest.headers.length}
+                  </span>
+                )}
+                {tab === 'tests' && httpRequest && (httpRequest.tests?.length ?? 0) > 0 && (
+                  <span className="text-[10px] text-text-muted tabular-nums">
+                    {httpRequest.tests?.length}
                   </span>
                 )}
               </button>
@@ -629,6 +611,16 @@ export function RequestPanel() {
                   </div>
                 )}
               </div>
+            )}
+
+            {httpRequest && activeSubTab === 'tests' && (
+              <RequestTestsEditor
+                tests={httpRequest.tests ?? []}
+                onTestsChange={(tests) => updateActiveRequest({ tests })}
+                extractions={httpRequest.extractions ?? []}
+                onExtractionsChange={(extractions) => updateActiveRequest({ extractions })}
+                latestExecution={executionResult}
+              />
             )}
           </div>
         </div>

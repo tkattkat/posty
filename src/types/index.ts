@@ -13,6 +13,35 @@ export interface KeyValue {
   description?: string
 }
 
+export interface HttpRequestAuth {
+  type: 'none' | 'bearer' | 'basic' | 'api-key'
+  token?: string
+  username?: string
+  password?: string
+  key?: string
+  value?: string
+  addTo?: 'header' | 'query'
+}
+
+export interface RequestTest {
+  id: string
+  enabled: boolean
+  type: 'status-code' | 'header-equals' | 'header-contains' | 'json-path-exists' | 'json-path-equals' | 'response-time-under'
+  label?: string
+  target?: string
+  expectedValue?: string
+  expectedStatus?: number
+  maxDurationMs?: number
+}
+
+export interface RequestVariableExtraction {
+  id: string
+  enabled: boolean
+  source: 'json-path' | 'header'
+  path: string
+  variableName: string
+}
+
 // HTTP Request
 export interface HttpRequest {
   id: string
@@ -26,15 +55,9 @@ export interface HttpRequest {
     type: 'none' | 'json' | 'form' | 'text' | 'binary'
     content: string
   }
-  auth?: {
-    type: 'none' | 'bearer' | 'basic' | 'api-key'
-    token?: string
-    username?: string
-    password?: string
-    key?: string
-    value?: string
-    addTo?: 'header' | 'query'
-  }
+  auth?: HttpRequestAuth
+  tests?: RequestTest[]
+  extractions?: RequestVariableExtraction[]
 }
 
 // WebSocket Request
@@ -81,6 +104,46 @@ export interface HttpResponse {
   body: string
   time: number
   size: number
+}
+
+export interface AssertionResult {
+  testId: string
+  testName: string
+  passed: boolean
+  message: string
+  actualValue?: string | number | boolean | null
+}
+
+export type RuntimeVariableMap = Record<string, string>
+
+export interface RequestExecutionResult {
+  requestId: string
+  requestName: string
+  response: HttpResponse
+  assertions: AssertionResult[]
+  extractedVariables: RuntimeVariableMap
+  passed: boolean
+}
+
+export interface RunnerStepResult {
+  requestId: string
+  requestName: string
+  status: 'pending' | 'running' | 'passed' | 'failed' | 'cancelled'
+  result?: RequestExecutionResult
+  error?: string
+  startedAt?: number
+  finishedAt?: number
+}
+
+export interface RunnerResult {
+  id: string
+  collectionId: string
+  collectionName: string
+  status: 'idle' | 'running' | 'completed' | 'failed' | 'cancelled'
+  stopOnFail: boolean
+  startedAt: number
+  finishedAt?: number
+  steps: RunnerStepResult[]
 }
 
 // WebSocket Message

@@ -74,12 +74,21 @@ pub async fn send_http_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wiremock::matchers::{body_string_contains, header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[tokio::test]
     async fn test_send_get_request() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/get"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"ok":true}"#))
+            .mount(&server)
+            .await;
+
         let response = send_http_request(
             "GET".to_string(),
-            "https://httpbin.org/get".to_string(),
+            format!("{}/get", server.uri()),
             HashMap::new(),
             None,
         )
@@ -88,17 +97,26 @@ mod tests {
         assert!(response.is_ok());
         let response = response.unwrap();
         assert_eq!(response.status, 200);
-        assert!(response.body.contains("httpbin.org"));
+        assert!(response.body.contains("\"ok\":true"));
     }
 
     #[tokio::test]
     async fn test_send_post_request() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/post"))
+            .and(header("content-type", "application/json"))
+            .and(body_string_contains("test"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"saved":true}"#))
+            .mount(&server)
+            .await;
+
         let mut headers = HashMap::new();
         headers.insert("Content-Type".to_string(), "application/json".to_string());
 
         let response = send_http_request(
             "POST".to_string(),
-            "https://httpbin.org/post".to_string(),
+            format!("{}/post", server.uri()),
             headers,
             Some(r#"{"test": "value"}"#.to_string()),
         )
@@ -107,17 +125,25 @@ mod tests {
         assert!(response.is_ok());
         let response = response.unwrap();
         assert_eq!(response.status, 200);
-        assert!(response.body.contains("test"));
+        assert!(response.body.contains("\"saved\":true"));
     }
 
     #[tokio::test]
     async fn test_send_request_with_headers() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/headers"))
+            .and(header("x-custom-header", "test-value"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"headers":{"x-custom-header":"test-value"}}"#))
+            .mount(&server)
+            .await;
+
         let mut headers = HashMap::new();
         headers.insert("X-Custom-Header".to_string(), "test-value".to_string());
 
         let response = send_http_request(
             "GET".to_string(),
-            "https://httpbin.org/headers".to_string(),
+            format!("{}/headers", server.uri()),
             headers,
             None,
         )
@@ -126,7 +152,7 @@ mod tests {
         assert!(response.is_ok());
         let response = response.unwrap();
         assert_eq!(response.status, 200);
-        assert!(response.body.contains("X-Custom-Header"));
+        assert!(response.body.contains("test-value"));
     }
 
     #[tokio::test]

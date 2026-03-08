@@ -229,6 +229,8 @@ pub async fn introspect_graphql_schema(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wiremock::matchers::{body_string_contains, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
     fn test_graphql_request_serialization() {
@@ -244,10 +246,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_graphql_request_to_public_api() {
-        // Test against a public GraphQL API
+    async fn test_graphql_request_to_mock_api() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/graphql"))
+            .and(body_string_contains("countries"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"data":{"countries":[{"code":"US","name":"United States"}]}}"#,
+            ))
+            .mount(&server)
+            .await;
+
         let response = send_graphql_request(
-            "https://countries.trevorblades.com/graphql".to_string(),
+            format!("{}/graphql", server.uri()),
             "query { countries { code name } }".to_string(),
             None,
             HashMap::new(),

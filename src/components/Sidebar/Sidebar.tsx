@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { FolderPlus, Clock, ChevronDown, Folder, GripVertical, Upload, Sun, Moon, Monitor, RefreshCw, Edit2, GitCompare, Check, Trash2, AlertTriangle, X, Lock, Plus, Save, Eye, EyeOff } from 'lucide-react'
+import { FolderPlus, Clock, ChevronDown, Folder, GripVertical, Play, Upload, Sun, Moon, Monitor, RefreshCw, Edit2, GitCompare, Check, Trash2, AlertTriangle, X, Lock, Plus, Save, Eye, EyeOff } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useCollectionStore } from '../../stores/collectionStore'
 import { useRequestStore } from '../../stores/requestStore'
@@ -7,6 +7,8 @@ import { ImportModal } from '../ImportModal/ImportModal'
 import { EditSpecModal } from '../Modals/EditSpecModal'
 import { DiffModal } from '../Modals/DiffModal'
 import type { Collection, HttpRequest, HistoryEntry, SecretVariable } from '../../types'
+import { CollectionRunnerModal } from '../Runner/CollectionRunnerModal'
+import { getRunnableCollectionLabel } from '../../lib/runner'
 
 const methodBadgeClass: Record<string, string> = {
   GET: 'method-badge method-badge-get',
@@ -207,6 +209,7 @@ function CollectionContextMenu({
   x,
   y,
   onClose,
+  onRunCollection,
   onEditSpec,
   onEditSecrets,
   onDeleteCollection,
@@ -215,6 +218,7 @@ function CollectionContextMenu({
   x: number
   y: number
   onClose: () => void
+  onRunCollection: (collection: Collection) => void
   onEditSpec: (collection: Collection) => void
   onEditSecrets: (collection: Collection) => void
   onDeleteCollection: (collection: Collection) => void
@@ -239,6 +243,17 @@ function CollectionContextMenu({
         className="fixed z-50 min-w-48 overflow-hidden rounded-lg border border-border bg-bg-secondary shadow-2xl"
         style={{ left: x, top: y }}
       >
+        <button
+          onClick={() => {
+            onRunCollection(collection)
+            onClose()
+          }}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
+        >
+          <Play className="h-3.5 w-3.5" />
+          {getRunnableCollectionLabel(collection)}
+        </button>
+        <div className="border-t border-border" />
         <button
           onClick={() => {
             onEditSecrets(collection)
@@ -612,6 +627,7 @@ export function Sidebar() {
   const [dropTargetCollectionId, setDropTargetCollectionId] = useState<string | null>(null)
   const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ collection: Collection; x: number; y: number } | null>(null)
+  const [runnerCollection, setRunnerCollection] = useState<Collection | null>(null)
   const suppressNextCollectionToggleRef = useRef(false)
 
   const cycleTheme = () => {
@@ -889,9 +905,17 @@ export function Sidebar() {
           x={contextMenu.x}
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
+          onRunCollection={setRunnerCollection}
           onEditSpec={setEditingCollection}
           onEditSecrets={setEditingSecretsCollection}
           onDeleteCollection={handleDeleteCollection}
+        />
+      )}
+
+      {runnerCollection && (
+        <CollectionRunnerModal
+          collection={runnerCollection}
+          onClose={() => setRunnerCollection(null)}
         />
       )}
 

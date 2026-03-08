@@ -48,7 +48,7 @@ export function convertImportedCollectionContents(imported: ImportedCollection):
 } {
   const converted = convertImportedCollection(imported)
   return {
-    requests: converted.requests,
+    requests: converted.requests.filter((request): request is HttpRequest => request.type === 'http'),
     folders: converted.folders,
   }
 }
