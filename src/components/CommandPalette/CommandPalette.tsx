@@ -18,7 +18,7 @@ const methodBadgeClass: Record<HttpMethod, string> = {
 
 export function CommandPalette() {
   const { closeCommandPalette } = useUIStore()
-  const { collections, history, getAllRequests } = useCollectionStore()
+  const { collections, history } = useCollectionStore()
   const { addTab } = useRequestStore()
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -28,23 +28,22 @@ export function CommandPalette() {
   const items = useMemo<CommandPaletteItem[]>(() => {
     const result: CommandPaletteItem[] = []
 
-    const allRequests = getAllRequests()
-    allRequests.forEach((request) => {
-      result.push({
-        id: request.id,
-        type: 'request',
-        title: request.name,
-        subtitle: 'url' in request ? request.url : undefined,
-        method: request.type === 'http' ? request.method : undefined,
-        action: () => {
-          addTab(request)
-          closeCommandPalette()
-        },
-      })
-    })
-
     const addCollections = (cols: typeof collections) => {
       cols.forEach((col) => {
+        col.requests.forEach((request) => {
+          result.push({
+            id: request.id,
+            type: 'request',
+            title: request.name,
+            subtitle: 'url' in request ? request.url : undefined,
+            method: request.type === 'http' ? request.method : undefined,
+            action: () => {
+              addTab(request, { collectionId: col.id, requestId: request.id })
+              closeCommandPalette()
+            },
+          })
+        })
+
         result.push({
           id: col.id,
           type: 'collection',
@@ -64,14 +63,17 @@ export function CommandPalette() {
         subtitle: 'url' in entry.request ? entry.request.url : undefined,
         method: entry.request.type === 'http' ? entry.request.method : undefined,
         action: () => {
-          addTab(entry.request)
+          addTab(entry.request, {
+            collectionId: entry.sourceCollectionId,
+            requestId: entry.sourceRequestId ?? entry.request.id,
+          })
           closeCommandPalette()
         },
       })
     })
 
     return result
-  }, [collections, history, getAllRequests, addTab, closeCommandPalette])
+  }, [collections, history, addTab, closeCommandPalette])
 
   const fuse = useMemo(
     () => new Fuse(items, { keys: ['title', 'subtitle'], threshold: 0.3 }),
@@ -86,10 +88,6 @@ export function CommandPalette() {
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
-
-  useEffect(() => {
-    setSelectedIndex(0)
-  }, [query])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     switch (e.key) {
@@ -134,7 +132,10 @@ export function CommandPalette() {
             ref={inputRef}
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setSelectedIndex(0)
+            }}
             onKeyDown={handleKeyDown}
             placeholder="Search requests, collections..."
             className="flex-1 bg-transparent text-text-primary placeholder:text-text-tertiary focus:outline-none text-sm"

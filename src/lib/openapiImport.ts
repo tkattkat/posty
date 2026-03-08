@@ -25,6 +25,7 @@ export function convertImportedCollection(imported: ImportedCollection): Collect
   return {
     id: crypto.randomUUID(),
     name: imported.name,
+    secrets: [],
     requests: imported.requests.map((req): HttpRequest => ({
       id: req.id,
       type: 'http',

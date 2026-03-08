@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { FolderPlus, Clock, ChevronDown, Folder, Upload, Sun, Moon, Monitor, RefreshCw, Edit2, GitCompare, Check, Trash2, AlertTriangle, X } from 'lucide-react'
+import { FolderPlus, Clock, ChevronDown, Folder, Upload, Sun, Moon, Monitor, RefreshCw, Edit2, GitCompare, Check, Trash2, AlertTriangle, X, Lock, Plus, Save, Eye, EyeOff } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useCollectionStore } from '../../stores/collectionStore'
 import { useRequestStore } from '../../stores/requestStore'
 import { ImportModal } from '../ImportModal/ImportModal'
 import { EditSpecModal } from '../Modals/EditSpecModal'
 import { DiffModal } from '../Modals/DiffModal'
-import type { Collection, HttpRequest, HistoryEntry } from '../../types'
+import type { Collection, HttpRequest, HistoryEntry, SecretVariable } from '../../types'
 
 const methodBadgeClass: Record<string, string> = {
   GET: 'method-badge method-badge-get',
@@ -23,12 +23,14 @@ function CollectionItem({
   depth = 0,
   onEditSpec,
   onDeleteCollection,
+  onEditSecrets,
   activeSourceRequestId,
 }: {
   collection: Collection
   depth?: number
   onEditSpec?: (collection: Collection) => void
   onDeleteCollection?: (collection: Collection) => void
+  onEditSecrets?: (collection: Collection) => void
   activeSourceRequestId?: string | null
 }) {
   const [isExpanded, setIsExpanded] = useState(true)
@@ -73,6 +75,16 @@ function CollectionItem({
         <button
           onClick={(e) => {
             e.stopPropagation()
+            onEditSecrets?.(collection)
+          }}
+          className="p-1 rounded hover:bg-bg-active opacity-0 group-hover:opacity-100 transition-opacity"
+          title="Collection secrets"
+        >
+          <Lock className="w-3 h-3 text-text-muted hover:text-text-secondary" />
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
             onDeleteCollection?.(collection)
           }}
           className="p-1 rounded hover:bg-error-muted opacity-0 group-hover:opacity-100 transition-opacity"
@@ -96,7 +108,7 @@ function CollectionItem({
                   : 'hover:bg-bg-hover'
               }`}
               style={{ paddingLeft: `${(depth + 1) * 12 + 12}px` }}
-              onClick={() => addTab(request)}
+              onClick={() => addTab(request, { collectionId: collection.id, requestId: request.id })}
             >
               {request.type === 'http' && (
                 <span className={methodBadgeClass[request.method]}>
@@ -121,6 +133,7 @@ function CollectionItem({
               depth={depth + 1}
               onEditSpec={onEditSpec}
               onDeleteCollection={onDeleteCollection}
+              onEditSecrets={onEditSecrets}
               activeSourceRequestId={activeSourceRequestId}
             />
           ))}
@@ -168,7 +181,10 @@ function HistoryPanel({
         }
       }
     } else {
-      addTab(entry.request)
+      addTab(entry.request, {
+        collectionId: entry.sourceCollectionId,
+        requestId: entry.sourceRequestId ?? entry.request.id,
+      })
     }
   }
 
@@ -300,14 +316,153 @@ function DeleteCollectionModal({
   )
 }
 
+function CollectionSecretsModal({
+  collection,
+  onClose,
+  onSave,
+}: {
+  collection: Collection
+  onClose: () => void
+  onSave: (secrets: SecretVariable[]) => void
+}) {
+  const [draftSecrets, setDraftSecrets] = useState<SecretVariable[]>(
+    collection.secrets?.length
+      ? collection.secrets
+      : [{ id: crypto.randomUUID(), name: '', value: '' }]
+  )
+  const [error, setError] = useState('')
+  const [showSecretValues, setShowSecretValues] = useState(false)
+
+  const updateSecret = (id: string, field: 'name' | 'value', value: string) => {
+    setDraftSecrets((current) => current.map((secret) => (secret.id === id ? { ...secret, [field]: value } : secret)))
+  }
+
+  const addSecret = () => {
+    setDraftSecrets((current) => [...current, { id: crypto.randomUUID(), name: '', value: '' }])
+  }
+
+  const removeSecret = (id: string) => {
+    setDraftSecrets((current) => current.filter((secret) => secret.id !== id))
+  }
+
+  const handleSave = () => {
+    const cleanedSecrets = draftSecrets
+      .map((secret) => ({ ...secret, name: secret.name.trim() }))
+      .filter((secret) => secret.name && secret.value)
+
+    const secretNames = cleanedSecrets.map((secret) => secret.name)
+    const hasDuplicateNames = new Set(secretNames).size !== secretNames.length
+
+    if (hasDuplicateNames) {
+      setError('Secret names must be unique')
+      return
+    }
+
+    setError('')
+    onSave(cleanedSecrets)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div
+        className="relative w-full max-w-2xl glass-elevated rounded-lg flex flex-col animate-scale-in max-h-[80vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Lock className="w-4 h-4 text-accent" />
+            <span className="text-[14px] font-medium">Collection Secrets</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-bg-hover rounded transition-colors text-text-muted hover:text-text-secondary"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-4 flex-1 overflow-auto">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <p className="text-[12px] text-text-secondary">
+              Secrets are scoped to "{collection.name}". Use `/` in header value fields to insert them as hidden tokens.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowSecretValues((current) => !current)}
+              className="btn-ghost flex items-center gap-1.5 text-[12px] whitespace-nowrap"
+            >
+              {showSecretValues ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              {showSecretValues ? 'Hide values' : 'Show values'}
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {draftSecrets.map((secret) => (
+              <div key={secret.id} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={secret.name}
+                  onChange={(e) => updateSecret(secret.id, 'name', e.target.value)}
+                  placeholder="SECRET_NAME"
+                  className="min-w-0 flex-1 input-field font-mono text-sm"
+                />
+                <input
+                  type={showSecretValues ? 'text' : 'password'}
+                  value={secret.value}
+                  onChange={(e) => updateSecret(secret.id, 'value', e.target.value)}
+                  placeholder="Secret value"
+                  className="min-w-0 flex-1 input-field text-sm"
+                />
+                <button
+                  onClick={() => removeSecret(secret.id)}
+                  className="p-2 text-text-tertiary hover:text-error hover:bg-error/10 rounded-md transition-all"
+                  title="Remove secret"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {error && (
+            <div className="mt-4 rounded bg-error-muted px-3 py-2 text-[12px] text-error">
+              {error}
+            </div>
+          )}
+
+          <button
+            onClick={addSecret}
+            className="mt-4 flex items-center gap-1.5 text-xs text-text-secondary hover:text-accent transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add secret
+          </button>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
+          <button onClick={onClose} className="btn-secondary">
+            Cancel
+          </button>
+          <button onClick={handleSave} className="btn-primary flex items-center gap-2">
+            <Save className="w-4 h-4" />
+            Save Secrets
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Sidebar() {
   const { activePanel, setActivePanel, theme, setTheme } = useUIStore()
-  const { collections, addCollection, deleteCollection } = useCollectionStore()
+  const { collections, addCollection, deleteCollection, updateCollection } = useCollectionStore()
   const { tabs, activeTabId } = useRequestStore()
   const [isCreating, setIsCreating] = useState(false)
   const [newCollectionName, setNewCollectionName] = useState('')
   const [showImportModal, setShowImportModal] = useState(false)
   const [editingCollection, setEditingCollection] = useState<Collection | null>(null)
+  const [editingSecretsCollection, setEditingSecretsCollection] = useState<Collection | null>(null)
   const [diffEntries, setDiffEntries] = useState<{ left: HistoryEntry; right: HistoryEntry } | null>(null)
   const [pendingDeleteCollection, setPendingDeleteCollection] = useState<Collection | null>(null)
 
@@ -342,6 +497,11 @@ export function Sidebar() {
 
     deleteCollection(pendingDeleteCollection.id)
     setPendingDeleteCollection(null)
+  }
+
+  const handleSaveSecrets = (collectionId: string, secrets: SecretVariable[]) => {
+    updateCollection(collectionId, { secrets })
+    setEditingSecretsCollection(null)
   }
 
   return (
@@ -431,6 +591,7 @@ export function Sidebar() {
                     collection={collection}
                     onEditSpec={setEditingCollection}
                     onDeleteCollection={handleDeleteCollection}
+                    onEditSecrets={setEditingSecretsCollection}
                     activeSourceRequestId={activeSourceRequestId}
                   />
                 ))}
@@ -472,6 +633,14 @@ export function Sidebar() {
         <EditSpecModal
           collection={editingCollection}
           onClose={() => setEditingCollection(null)}
+        />
+      )}
+
+      {editingSecretsCollection && (
+        <CollectionSecretsModal
+          collection={editingSecretsCollection}
+          onClose={() => setEditingSecretsCollection(null)}
+          onSave={(secrets) => handleSaveSecrets(editingSecretsCollection.id, secrets)}
         />
       )}
 

@@ -2,6 +2,11 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Request, HttpRequest, Tab, HttpResponse } from '../types'
 
+interface TabSourceContext {
+  collectionId?: string
+  requestId?: string
+}
+
 const createNewHttpRequest = (): HttpRequest => ({
   id: crypto.randomUUID(),
   name: 'New Request',
@@ -23,7 +28,7 @@ interface RequestStore {
   isLoading: boolean
 
   // Actions
-  addTab: (request?: Request) => void
+  addTab: (request?: Request, source?: TabSourceContext) => void
   removeTab: (tabId: string) => void
   setActiveTab: (tabId: string) => void
   updateRequest: (tabId: string, updates: Partial<Request>) => void
@@ -41,10 +46,10 @@ export const useRequestStore = create<RequestStore>()(
       response: null,
       isLoading: false,
 
-      addTab: (request) => {
+      addTab: (request, source) => {
         // Clone the request and give it a new ID to avoid conflicts
         const baseRequest = request || createNewHttpRequest()
-        const sourceRequestId = request?.id
+        const sourceRequestId = source?.requestId ?? request?.id
         const newRequest = {
           ...baseRequest,
           id: crypto.randomUUID(), // Always generate a new ID for the tab's request copy
@@ -56,6 +61,7 @@ export const useRequestStore = create<RequestStore>()(
           request: newRequest,
           isDirty: false,
           sourceRequestId,
+          sourceCollectionId: source?.collectionId,
         }
         set((state) => ({
           tabs: [...state.tabs, newTab],

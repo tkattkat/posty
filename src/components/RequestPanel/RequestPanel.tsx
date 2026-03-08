@@ -1,12 +1,13 @@
-import { useState, useEffect, useRef } from 'react'
-import { X, Plus, Send, Loader2, Code, ChevronDown } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { X, Plus, Send, Loader2, Code, ChevronDown, Lock } from 'lucide-react'
 import { useRequestStore } from '../../stores/requestStore'
 import { useCollectionStore } from '../../stores/collectionStore'
 import { isCurlCommand, curlToHttpRequest } from '../../lib/curlParser'
 import { ResponsePanel } from '../ResponsePanel/ResponsePanel'
 import { CodeGeneratorModal } from '../Modals/CodeGeneratorModal'
-import type { HttpMethod, KeyValue } from '../../types'
+import type { HttpMethod, KeyValue, SecretVariable } from '../../types'
 import { invoke } from '@tauri-apps/api/core'
+import { createSecretReference, getSecretReferenceName, resolveRequestHeaderSecrets } from '../../lib/secrets'
 
 const methods: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD']
 
@@ -24,10 +25,14 @@ function KeyValueEditor({
   items,
   onChange,
   placeholder = { key: 'Key', value: 'Value' },
+  secrets = [],
+  enableSecretTokens = false,
 }: {
   items: KeyValue[]
   onChange: (items: KeyValue[]) => void
   placeholder?: { key: string; value: string }
+  secrets?: SecretVariable[]
+  enableSecretTokens?: boolean
 }) {
   const addItem = () => {
     onChange([...items, { id: crypto.randomUUID(), key: '', value: '', enabled: true }])
@@ -60,13 +65,22 @@ function KeyValueEditor({
             placeholder={placeholder.key}
             className="flex-1 input-field text-sm py-2"
           />
-          <input
-            type="text"
-            value={item.value}
-            onChange={(e) => updateItem(item.id, 'value', e.target.value)}
-            placeholder={placeholder.value}
-            className="flex-1 input-field text-sm py-2"
-          />
+          {enableSecretTokens ? (
+            <SecretValueInput
+              value={item.value}
+              onChange={(value) => updateItem(item.id, 'value', value)}
+              secrets={secrets}
+              placeholder={placeholder.value}
+            />
+          ) : (
+            <input
+              type="text"
+              value={item.value}
+              onChange={(e) => updateItem(item.id, 'value', e.target.value)}
+              placeholder={placeholder.value}
+              className="flex-1 input-field text-sm py-2"
+            />
+          )}
           <button
             onClick={() => removeItem(item.id)}
             className="p-2 text-text-tertiary hover:text-error hover:bg-error/10 rounded-md transition-all"
@@ -86,6 +100,101 @@ function KeyValueEditor({
   )
 }
 
+function SecretValueInput({
+  value,
+  onChange,
+  secrets,
+  placeholder,
+}: {
+  value: string
+  onChange: (value: string) => void
+  secrets: SecretVariable[]
+  placeholder: string
+}) {
+  const [query, setQuery] = useState(value.startsWith('/') ? value.slice(1) : '')
+  const [isPickerOpen, setIsPickerOpen] = useState(value.startsWith('/'))
+  const secretReferenceName = getSecretReferenceName(value)
+
+  const filteredSecrets = secrets.filter((secret) =>
+    secret.name.toLowerCase().includes(query.toLowerCase())
+  )
+
+  if (secretReferenceName) {
+    return (
+      <div className="secret-chip-field">
+        <button
+          type="button"
+          className="secret-chip"
+          onClick={() => onChange('')}
+          title={`Secret reference: ${secretReferenceName}`}
+        >
+          <Lock className="w-3.5 h-3.5" />
+          <span className="secret-chip-label">{secretReferenceName}</span>
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative flex-1">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => {
+          const nextValue = e.target.value
+          onChange(nextValue)
+
+          if (nextValue.startsWith('/')) {
+            setQuery(nextValue.slice(1))
+            setIsPickerOpen(true)
+          } else {
+            setQuery('')
+            setIsPickerOpen(false)
+          }
+        }}
+        onBlur={() => {
+          window.setTimeout(() => setIsPickerOpen(false), 120)
+        }}
+        onFocus={() => {
+          if (value.startsWith('/')) {
+            setIsPickerOpen(true)
+          }
+        }}
+        placeholder={placeholder}
+        className="w-full input-field text-sm py-2"
+      />
+
+      {isPickerOpen && (
+        <div className="secret-picker">
+          {filteredSecrets.length > 0 ? (
+            filteredSecrets.map((secret) => (
+              <button
+                key={secret.id}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  onChange(createSecretReference(secret.name))
+                  setIsPickerOpen(false)
+                  setQuery('')
+                }}
+                className="secret-picker-item"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span className="secret-picker-label">{secret.name}</span>
+              </button>
+            ))
+          ) : (
+            <div className="secret-picker-empty">
+              {secrets.length === 0 ? 'No collection secrets yet' : 'No matching secrets'}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function RequestPanel() {
   const {
     tabs,
@@ -99,7 +208,7 @@ export function RequestPanel() {
     setLoading,
     isLoading,
   } = useRequestStore()
-  const { addToHistory } = useCollectionStore()
+  const { addToHistory, findCollectionById, findCollectionByRequestId } = useCollectionStore()
   const [activeSubTab, setActiveSubTab] = useState<'params' | 'headers' | 'body' | 'auth'>('params')
   const [showMethodDropdown, setShowMethodDropdown] = useState(false)
   const [showCodeGen, setShowCodeGen] = useState(false)
@@ -107,6 +216,11 @@ export function RequestPanel() {
 
   const activeRequest = getActiveRequest()
   const httpRequest = activeRequest?.type === 'http' ? activeRequest : null
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null
+  const activeCollection =
+    (activeTab?.sourceCollectionId ? findCollectionById(activeTab.sourceCollectionId) : null) ??
+    (activeTab?.sourceRequestId ? findCollectionByRequestId(activeTab.sourceRequestId) : null)
+  const activeSecrets = useMemo(() => activeCollection?.secrets ?? [], [activeCollection])
 
   useEffect(() => {
     if (!requestSplitRef.current) return
@@ -149,13 +263,14 @@ export function RequestPanel() {
     updateActiveRequest({ url: value })
   }
 
-  const handleSendRequest = async () => {
+  const handleSendRequest = useCallback(async () => {
     if (!httpRequest || !httpRequest.url) return
 
     setLoading(true)
     setResponse(null)
 
     try {
+      const requestToSend = resolveRequestHeaderSecrets(httpRequest, activeSecrets)
       const response = await invoke<{
         status: number
         status_text: string
@@ -164,12 +279,12 @@ export function RequestPanel() {
         time: number
         size: number
       }>('send_http_request', {
-        method: httpRequest.method,
-        url: httpRequest.url,
-        headers: httpRequest.headers
+        method: requestToSend.method,
+        url: requestToSend.url,
+        headers: requestToSend.headers
           .filter((h) => h.enabled && h.key)
           .reduce((acc, h) => ({ ...acc, [h.key]: h.value }), {}),
-        body: httpRequest.body.type !== 'none' ? httpRequest.body.content : null,
+        body: requestToSend.body.type !== 'none' ? requestToSend.body.content : null,
       })
 
       const httpResponse = {
@@ -182,7 +297,13 @@ export function RequestPanel() {
       }
 
       setResponse(httpResponse)
-      addToHistory({ request: httpRequest, response: httpResponse, timestamp: Date.now() })
+      addToHistory({
+        request: httpRequest,
+        response: httpResponse,
+        timestamp: Date.now(),
+        sourceCollectionId: activeCollection?.id,
+        sourceRequestId: activeTab?.sourceRequestId,
+      })
     } catch (error) {
       setResponse({
         status: 0,
@@ -195,7 +316,7 @@ export function RequestPanel() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [activeCollection?.id, activeSecrets, activeTab?.sourceRequestId, addToHistory, httpRequest, setLoading, setResponse])
 
   // Keyboard shortcut to send
   useEffect(() => {
@@ -207,7 +328,7 @@ export function RequestPanel() {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [httpRequest])
+  }, [handleSendRequest])
 
   if (!activeRequest) {
     return (
@@ -410,7 +531,9 @@ export function RequestPanel() {
               <KeyValueEditor
                 items={httpRequest.headers}
                 onChange={(headers) => updateActiveRequest({ headers })}
-                placeholder={{ key: 'Header', value: 'Value' }}
+                placeholder={{ key: 'Header', value: 'Value or /secret' }}
+                secrets={activeSecrets}
+                enableSecretTokens
               />
             )}
 
@@ -442,7 +565,14 @@ export function RequestPanel() {
               <div className="space-y-4">
                 <select
                   value={httpRequest.auth?.type || 'none'}
-                  onChange={(e) => updateActiveRequest({ auth: { ...httpRequest.auth, type: e.target.value as any } })}
+                  onChange={(e) =>
+                    updateActiveRequest({
+                      auth: {
+                        ...httpRequest.auth,
+                        type: e.target.value as NonNullable<typeof httpRequest.auth>['type'],
+                      },
+                    })
+                  }
                   className="input-field text-sm"
                 >
                   <option value="none">No Auth</option>
@@ -519,7 +649,11 @@ export function RequestPanel() {
 
       {/* Code Generation Modal */}
       {showCodeGen && httpRequest && (
-        <CodeGeneratorModal request={httpRequest} onClose={() => setShowCodeGen(false)} />
+        <CodeGeneratorModal
+          request={httpRequest}
+          secrets={activeSecrets}
+          onClose={() => setShowCodeGen(false)}
+        />
       )}
     </div>
   )

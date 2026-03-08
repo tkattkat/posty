@@ -101,6 +101,12 @@ export interface OpenApiSource {
   sourceModifiedAt?: number
 }
 
+export interface SecretVariable {
+  id: string
+  name: string
+  value: string
+}
+
 // Collection
 export interface Collection {
   id: string
@@ -110,6 +116,7 @@ export interface Collection {
   folders: Collection[]
   parentId?: string
   openApiSource?: OpenApiSource
+  secrets?: SecretVariable[]
 }
 
 // Environment
@@ -126,6 +133,8 @@ export interface HistoryEntry {
   request: Request
   response?: HttpResponse
   timestamp: number
+  sourceRequestId?: string
+  sourceCollectionId?: string
 }
 
 // Tab
@@ -134,6 +143,7 @@ export interface Tab {
   request: Request
   isDirty: boolean
   sourceRequestId?: string
+  sourceCollectionId?: string
 }
 
 // Command Palette Item

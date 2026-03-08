@@ -123,6 +123,114 @@ fn resolve_schema_ref<'a>(reference: &str, openapi: &'a OpenAPI) -> Option<&'a S
     None
 }
 
+fn resolve_request_body_ref<'a>(
+    reference: &str,
+    openapi: &'a OpenAPI,
+) -> Option<&'a openapiv3::RequestBody> {
+    let parts: Vec<&str> = reference.split('/').collect();
+    if parts.len() >= 4 && parts[1] == "components" && parts[2] == "requestBodies" {
+        let body_name = parts[3];
+        if let Some(components) = &openapi.components {
+            if let Some(openapiv3::ReferenceOr::Item(body)) = components.request_bodies.get(body_name) {
+                return Some(body);
+            }
+        }
+    }
+    None
+}
+
+fn resolve_security_scheme_ref<'a>(
+    reference: &str,
+    openapi: &'a OpenAPI,
+) -> Option<&'a openapiv3::SecurityScheme> {
+    let parts: Vec<&str> = reference.split('/').collect();
+    if parts.len() >= 4 && parts[1] == "components" && parts[2] == "securitySchemes" {
+        let scheme_name = parts[3];
+        if let Some(components) = &openapi.components {
+            if let Some(openapiv3::ReferenceOr::Item(scheme)) = components.security_schemes.get(scheme_name) {
+                return Some(scheme);
+            }
+        }
+    }
+    None
+}
+
+fn add_header_if_missing(headers: &mut Vec<KeyValue>, key: String, description: Option<String>) {
+    if headers.iter().any(|header| header.key.eq_ignore_ascii_case(&key)) {
+        return;
+    }
+
+    headers.push(KeyValue {
+        id: uuid::Uuid::new_v4().to_string(),
+        key,
+        value: String::new(),
+        enabled: true,
+        description,
+    });
+}
+
+fn apply_security_requirements(
+    headers: &mut Vec<KeyValue>,
+    security: &[openapiv3::SecurityRequirement],
+    openapi: &OpenAPI,
+) {
+    for requirement in security {
+        for (scheme_name, _) in requirement.iter() {
+            let scheme = openapi
+                .components
+                .as_ref()
+                .and_then(|components| components.security_schemes.get(scheme_name))
+                .and_then(|scheme_ref| match scheme_ref {
+                    openapiv3::ReferenceOr::Item(scheme) => Some(scheme),
+                    openapiv3::ReferenceOr::Reference { reference } => {
+                        resolve_security_scheme_ref(reference, openapi)
+                    }
+                });
+
+            if let Some(openapiv3::SecurityScheme::APIKey { location, name, description, .. }) = scheme {
+                if matches!(location, openapiv3::APIKeyLocation::Header) {
+                    add_header_if_missing(headers, name.clone(), description.clone());
+                }
+            }
+        }
+    }
+}
+
+fn extract_media_type_content(
+    media_type: &openapiv3::MediaType,
+    openapi: &OpenAPI,
+) -> String {
+    if let Some(example) = &media_type.example {
+        return serde_json::to_string_pretty(example).unwrap_or_else(|_| example.to_string());
+    }
+
+    if let Some(example) = media_type.examples.values().find_map(|example_ref| match example_ref {
+        openapiv3::ReferenceOr::Item(example) => example.value.as_ref(),
+        openapiv3::ReferenceOr::Reference { .. } => None,
+    }) {
+        return serde_json::to_string_pretty(example).unwrap_or_else(|_| example.to_string());
+    }
+
+    if let Some(schema_ref) = &media_type.schema {
+        match schema_ref {
+            openapiv3::ReferenceOr::Item(schema) => {
+                let example = generate_example_json(schema, openapi, 0);
+                serde_json::to_string_pretty(&example).unwrap_or_else(|_| "{}".to_string())
+            }
+            openapiv3::ReferenceOr::Reference { reference } => {
+                if let Some(resolved) = resolve_schema_ref(reference, openapi) {
+                    let example = generate_example_json(resolved, openapi, 0);
+                    serde_json::to_string_pretty(&example).unwrap_or_else(|_| "{}".to_string())
+                } else {
+                    "{}".to_string()
+                }
+            }
+        }
+    } else {
+        "{}".to_string()
+    }
+}
+
 #[tauri::command]
 pub fn parse_openapi_spec(spec_content: String) -> Result<ImportedCollection, String> {
     let openapi: OpenAPI =
@@ -222,66 +330,56 @@ pub fn parse_openapi_spec(spec_content: String) -> Result<ImportedCollection, St
                         }
                     }
 
+                    let effective_security = op
+                        .security
+                        .clone()
+                        .unwrap_or_else(|| openapi.security.clone().unwrap_or_default());
+                    apply_security_requirements(&mut headers, &effective_security, &openapi);
+
                     // Extract request body and add Content-Type header
                     let body = if let Some(ref body_ref) = op.request_body {
-                        if let openapiv3::ReferenceOr::Item(body) = body_ref {
+                        let body = match body_ref {
+                            openapiv3::ReferenceOr::Item(body) => Some(body),
+                            openapiv3::ReferenceOr::Reference { reference } => {
+                                resolve_request_body_ref(reference, &openapi)
+                            }
+                        };
+
+                        if let Some(body) = body {
                             if let Some(media_type) = body.content.get("application/json") {
                                 // Add Content-Type header
-                                headers.push(KeyValue {
-                                    id: uuid::Uuid::new_v4().to_string(),
-                                    key: "Content-Type".to_string(),
-                                    value: "application/json".to_string(),
-                                    enabled: true,
-                                    description: None,
-                                });
+                                add_header_if_missing(&mut headers, "Content-Type".to_string(), None);
+                                if let Some(content_type) = headers.iter_mut().find(|header| header.key == "Content-Type") {
+                                    content_type.value = "application/json".to_string();
+                                }
 
-                                // Generate example body from schema
-                                let content = if let Some(schema_ref) = &media_type.schema {
-                                    match schema_ref {
-                                        openapiv3::ReferenceOr::Item(schema) => {
-                                            let example = generate_example_json(schema, &openapi, 0);
-                                            serde_json::to_string_pretty(&example).unwrap_or_else(|_| "{}".to_string())
-                                        }
-                                        openapiv3::ReferenceOr::Reference { reference } => {
-                                            if let Some(resolved) = resolve_schema_ref(reference, &openapi) {
-                                                let example = generate_example_json(resolved, &openapi, 0);
-                                                serde_json::to_string_pretty(&example).unwrap_or_else(|_| "{}".to_string())
-                                            } else {
-                                                "{}".to_string()
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    "{}".to_string()
-                                };
+                                let content = extract_media_type_content(media_type, &openapi);
 
                                 Some(RequestBody {
                                     r#type: "json".to_string(),
                                     content,
                                 })
                             } else if body.content.contains_key("application/x-www-form-urlencoded") {
-                                headers.push(KeyValue {
-                                    id: uuid::Uuid::new_v4().to_string(),
-                                    key: "Content-Type".to_string(),
-                                    value: "application/x-www-form-urlencoded".to_string(),
-                                    enabled: true,
-                                    description: None,
-                                });
+                                add_header_if_missing(&mut headers, "Content-Type".to_string(), None);
+                                if let Some(content_type) = headers.iter_mut().find(|header| header.key == "Content-Type") {
+                                    content_type.value = "application/x-www-form-urlencoded".to_string();
+                                }
                                 Some(RequestBody {
                                     r#type: "form".to_string(),
                                     content: String::new(),
                                 })
                             } else if body.content.contains_key("text/plain") {
-                                headers.push(KeyValue {
-                                    id: uuid::Uuid::new_v4().to_string(),
-                                    key: "Content-Type".to_string(),
-                                    value: "text/plain".to_string(),
-                                    enabled: true,
-                                    description: None,
-                                });
+                                add_header_if_missing(&mut headers, "Content-Type".to_string(), None);
+                                if let Some(content_type) = headers.iter_mut().find(|header| header.key == "Content-Type") {
+                                    content_type.value = "text/plain".to_string();
+                                }
                                 Some(RequestBody {
                                     r#type: "text".to_string(),
-                                    content: String::new(),
+                                    content: body
+                                        .content
+                                        .get("text/plain")
+                                        .map(|media_type| extract_media_type_content(media_type, &openapi))
+                                        .unwrap_or_default(),
                                 })
                             } else {
                                 None
@@ -385,7 +483,7 @@ mod tests {
 
     #[test]
     fn test_parse_simple_openapi_spec() {
-        let spec = r#"
+        let spec = r##"
         {
             "openapi": "3.0.0",
             "info": {
@@ -425,7 +523,7 @@ mod tests {
                 }
             }
         }
-        "#;
+        "##;
 
         let result = parse_openapi_spec(spec.to_string());
         assert!(result.is_ok());
@@ -445,7 +543,7 @@ mod tests {
 
     #[test]
     fn test_parse_openapi_with_tags() {
-        let spec = r#"
+        let spec = r##"
         {
             "openapi": "3.0.0",
             "info": {
@@ -469,7 +567,7 @@ mod tests {
                 }
             }
         }
-        "#;
+        "##;
 
         let result = parse_openapi_spec(spec.to_string());
         assert!(result.is_ok());
@@ -484,7 +582,7 @@ mod tests {
 
     #[test]
     fn test_parse_openapi_with_parameters() {
-        let spec = r#"
+        let spec = r##"
         {
             "openapi": "3.0.0",
             "info": {
@@ -514,7 +612,7 @@ mod tests {
                 }
             }
         }
-        "#;
+        "##;
 
         let result = parse_openapi_spec(spec.to_string());
         assert!(result.is_ok());
@@ -528,5 +626,110 @@ mod tests {
         assert_eq!(request.headers.len(), 1);
         assert_eq!(request.headers[0].key, "Authorization");
         assert!(request.headers[0].enabled); // required = true
+    }
+
+    #[test]
+    fn test_parse_openapi_with_security_schemes() {
+        let spec = r#"
+        {
+            "openapi": "3.0.0",
+            "info": {
+                "title": "Secure API",
+                "version": "1.0.0"
+            },
+            "components": {
+                "securitySchemes": {
+                    "ApiKeyAuth": {
+                        "type": "apiKey",
+                        "in": "header",
+                        "name": "x-api-key",
+                        "description": "API key"
+                    },
+                    "ProjectId": {
+                        "type": "apiKey",
+                        "in": "header",
+                        "name": "x-project-id"
+                    }
+                }
+            },
+            "security": [
+                {
+                    "ApiKeyAuth": [],
+                    "ProjectId": []
+                }
+            ],
+            "paths": {
+                "/secure": {
+                    "post": {
+                        "summary": "Secure endpoint",
+                        "responses": { "200": { "description": "OK" } }
+                    }
+                }
+            }
+        }
+        "#;
+
+        let result = parse_openapi_spec(spec.to_string());
+        assert!(result.is_ok());
+
+        let collection = result.unwrap();
+        let request = &collection.requests[0];
+        let header_keys: Vec<&str> = request.headers.iter().map(|header| header.key.as_str()).collect();
+
+        assert!(header_keys.contains(&"x-api-key"));
+        assert!(header_keys.contains(&"x-project-id"));
+    }
+
+    #[test]
+    fn test_parse_openapi_with_referenced_request_body() {
+        let spec = r##"
+        {
+            "openapi": "3.0.0",
+            "info": {
+                "title": "Body API",
+                "version": "1.0.0"
+            },
+            "components": {
+                "requestBodies": {
+                    "CreateUserBody": {
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": { "type": "string" },
+                                        "email": { "type": "string", "format": "email" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "paths": {
+                "/users": {
+                    "post": {
+                        "summary": "Create user",
+                        "requestBody": {
+                            "$ref": "#/components/requestBodies/CreateUserBody"
+                        },
+                        "responses": { "200": { "description": "OK" } }
+                    }
+                }
+            }
+        }
+        "##;
+
+        let result = parse_openapi_spec(spec.to_string());
+        assert!(result.is_ok());
+
+        let collection = result.unwrap();
+        let request = &collection.requests[0];
+
+        assert!(request.body.is_some());
+        assert_eq!(request.body.as_ref().unwrap().r#type, "json");
+        assert!(request.body.as_ref().unwrap().content.contains("\"email\""));
+        assert!(request.headers.iter().any(|header| header.key == "Content-Type"));
     }
 }

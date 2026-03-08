@@ -36,6 +36,7 @@ interface CollectionStore {
 
   // Helpers
   findCollectionById: (id: string) => Collection | null
+  findCollectionByRequestId: (requestId: string) => Collection | null
   getAllRequests: () => Request[]
 }
 
@@ -52,6 +53,7 @@ export const useCollectionStore = create<CollectionStore>()(
     const newCollection: Collection = {
       id: crypto.randomUUID(),
       name,
+      secrets: [],
       requests: [],
       folders: [],
       parentId,
@@ -221,6 +223,23 @@ export const useCollectionStore = create<CollectionStore>()(
       }
       return null
     }
+    return findInCollections(collections)
+  },
+
+  findCollectionByRequestId: (requestId) => {
+    const { collections } = get()
+    const findInCollections = (cols: Collection[]): Collection | null => {
+      for (const col of cols) {
+        if (col.requests.some((request) => request.id === requestId)) {
+          return col
+        }
+
+        const found = findInCollections(col.folders)
+        if (found) return found
+      }
+      return null
+    }
+
     return findInCollections(collections)
   },
 

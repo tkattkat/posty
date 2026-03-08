@@ -11,10 +11,12 @@ import 'prismjs/components/prism-rust'
 import 'prismjs/themes/prism-tomorrow.css'
 import { X, Copy, Check } from 'lucide-react'
 import { generateCode, languageLabels, type CodeLanguage } from '../../lib/codegen'
-import type { HttpRequest } from '../../types'
+import type { HttpRequest, SecretVariable } from '../../types'
+import { resolveRequestHeaderSecrets } from '../../lib/secrets'
 
 interface CodeGeneratorModalProps {
   request: HttpRequest
+  secrets?: SecretVariable[]
   onClose: () => void
 }
 
@@ -29,16 +31,19 @@ const prismLanguageMap: Record<CodeLanguage, string> = {
   php: 'php',
 }
 
-export function CodeGeneratorModal({ request, onClose }: CodeGeneratorModalProps) {
+export function CodeGeneratorModal({ request, secrets = [], onClose }: CodeGeneratorModalProps) {
   const [selectedLanguage, setSelectedLanguage] = useState<CodeLanguage>('curl')
   const [copied, setCopied] = useState(false)
+  const [showResolvedSecrets, setShowResolvedSecrets] = useState(false)
 
-  const code = generateCode({ request, language: selectedLanguage })
+  const requestForCode = showResolvedSecrets ? resolveRequestHeaderSecrets(request, secrets) : request
+  const code = generateCode({ request: requestForCode, language: selectedLanguage })
   const prismLanguage = prismLanguageMap[selectedLanguage]
   const highlightedCode = useMemo(() => {
     const grammar = Prism.languages[prismLanguage] ?? Prism.languages.javascript
     return Prism.highlight(code, grammar, prismLanguage)
   }, [code, prismLanguage])
+  const hasSecretReferences = request.headers.some((header) => header.value.startsWith('{{') && header.value.endsWith('}}'))
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(code)
@@ -104,7 +109,18 @@ export function CodeGeneratorModal({ request, onClose }: CodeGeneratorModalProps
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 px-4 py-3 border-t border-border bg-bg-tertiary/50">
+        <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border bg-bg-tertiary/50">
+          <div>
+            {hasSecretReferences && secrets.length > 0 && (
+              <button
+                onClick={() => setShowResolvedSecrets((current) => !current)}
+                className="px-3 py-2 bg-bg-primary text-text-secondary rounded hover:bg-bg-tertiary"
+              >
+                {showResolvedSecrets ? 'Use Placeholders' : 'Use Secret Values'}
+              </button>
+            )}
+          </div>
+          <div className="flex gap-2">
           <button
             onClick={handleCopy}
             className="px-4 py-2 bg-accent text-white rounded hover:bg-accent-hover"
@@ -117,6 +133,7 @@ export function CodeGeneratorModal({ request, onClose }: CodeGeneratorModalProps
           >
             Close
           </button>
+          </div>
         </div>
       </div>
     </div>

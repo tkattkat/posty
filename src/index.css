@@ -421,6 +421,103 @@ body.is-resizing {
   outline: none;
 }
 
+.secret-chip-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 6px 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.secret-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 6px 10px;
+  background: var(--accent-muted);
+  color: var(--accent-light);
+  border: 1px solid var(--border-focus);
+  border-radius: 999px;
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.secret-chip:hover {
+  background: rgba(59, 130, 246, 0.18);
+  color: var(--text-primary);
+}
+
+.secret-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.secret-picker {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  max-height: 180px;
+  overflow: auto;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px var(--shadow-color);
+}
+
+.secret-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+  font-size: 12px;
+}
+
+.secret-picker-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.secret-picker-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'SF Mono', ui-monospace, monospace;
+}
+
+.secret-picker-empty {
+  padding: 8px 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 /* Method colors - vibrant but refined */
 .method-get { color: #22C55E; }
 .method-post { color: #F59E0B; }
