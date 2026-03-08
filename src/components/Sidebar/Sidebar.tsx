@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { FolderPlus, Clock, ChevronDown, Folder, GripVertical, Play, Upload, Sun, Moon, Monitor, RefreshCw, Edit2, GitCompare, Check, Trash2, AlertTriangle, X, Lock, Plus, Save, Eye, EyeOff } from 'lucide-react'
+import { FolderPlus, Clock, ChevronDown, Folder, GripVertical, Play, Upload, Sun, Moon, Monitor, RefreshCw, Edit2, GitCompare, Check, Trash2, AlertTriangle, X, Lock, Plus, Save, Eye, EyeOff, Globe } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useCollectionStore } from '../../stores/collectionStore'
 import { useRequestStore } from '../../stores/requestStore'
@@ -210,6 +210,7 @@ function CollectionContextMenu({
   y,
   onClose,
   onRunCollection,
+  onEditBaseUrl,
   onEditSpec,
   onEditSecrets,
   onDeleteCollection,
@@ -219,6 +220,7 @@ function CollectionContextMenu({
   y: number
   onClose: () => void
   onRunCollection: (collection: Collection) => void
+  onEditBaseUrl: (collection: Collection) => void
   onEditSpec: (collection: Collection) => void
   onEditSecrets: (collection: Collection) => void
   onDeleteCollection: (collection: Collection) => void
@@ -254,6 +256,16 @@ function CollectionContextMenu({
           {getRunnableCollectionLabel(collection)}
         </button>
         <div className="border-t border-border" />
+        <button
+          onClick={() => {
+            onEditBaseUrl(collection)
+            onClose()
+          }}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
+        >
+          <Globe className="h-3.5 w-3.5" />
+          Collection base URL
+        </button>
         <button
           onClick={() => {
             onEditSecrets(collection)
@@ -611,6 +623,78 @@ function CollectionSecretsModal({
   )
 }
 
+function CollectionBaseUrlModal({
+  collection,
+  onClose,
+  onSave,
+}: {
+  collection: Collection
+  onClose: () => void
+  onSave: (baseUrl: string | undefined) => void
+}) {
+  const [draftBaseUrl, setDraftBaseUrl] = useState(collection.baseUrl ?? '')
+
+  const handleSave = () => {
+    const trimmedBaseUrl = draftBaseUrl.trim()
+    onSave(trimmedBaseUrl || undefined)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div
+        className="relative w-full max-w-xl glass-elevated rounded-lg flex flex-col animate-scale-in"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Globe className="w-4 h-4 text-accent" />
+            <span className="text-[14px] font-medium">Collection Base URL</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-bg-hover rounded transition-colors text-text-muted hover:text-text-secondary"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-4">
+          <p className="mb-3 text-[12px] text-text-secondary">
+            Relative request URLs in "{collection.name}" will resolve against this base URL. Absolute request URLs still take precedence.
+          </p>
+          <input
+            type="text"
+            value={draftBaseUrl}
+            onChange={(event) => setDraftBaseUrl(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                handleSave()
+              }
+            }}
+            placeholder="https://api.example.com/v1"
+            className="input-field text-[13px] font-mono"
+            autoFocus
+          />
+          <p className="mt-2 text-[11px] text-text-muted">
+            Leave blank to disable collection-level base URL resolution.
+          </p>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
+          <button onClick={onClose} className="btn-secondary">
+            Cancel
+          </button>
+          <button onClick={handleSave} className="btn-primary flex items-center gap-2">
+            <Save className="w-4 h-4" />
+            Save Base URL
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Sidebar() {
   const { activePanel, setActivePanel, theme, setTheme } = useUIStore()
   const { collections, addCollection, deleteCollection, moveCollection, updateCollection } = useCollectionStore()
@@ -619,6 +703,7 @@ export function Sidebar() {
   const [newCollectionName, setNewCollectionName] = useState('')
   const [showImportModal, setShowImportModal] = useState(false)
   const [editingCollection, setEditingCollection] = useState<Collection | null>(null)
+  const [editingBaseUrlCollection, setEditingBaseUrlCollection] = useState<Collection | null>(null)
   const [editingSecretsCollection, setEditingSecretsCollection] = useState<Collection | null>(null)
   const [diffEntries, setDiffEntries] = useState<{ left: HistoryEntry; right: HistoryEntry } | null>(null)
   const [pendingDeleteCollection, setPendingDeleteCollection] = useState<Collection | null>(null)
@@ -666,6 +751,11 @@ export function Sidebar() {
   const handleSaveSecrets = (collectionId: string, secrets: SecretVariable[]) => {
     updateCollection(collectionId, { secrets })
     setEditingSecretsCollection(null)
+  }
+
+  const handleSaveBaseUrl = (collectionId: string, baseUrl: string | undefined) => {
+    updateCollection(collectionId, { baseUrl })
+    setEditingBaseUrlCollection(null)
   }
 
   const handleCollectionDragEnd = () => {
@@ -883,6 +973,14 @@ export function Sidebar() {
         />
       )}
 
+      {editingBaseUrlCollection && (
+        <CollectionBaseUrlModal
+          collection={editingBaseUrlCollection}
+          onClose={() => setEditingBaseUrlCollection(null)}
+          onSave={(baseUrl) => handleSaveBaseUrl(editingBaseUrlCollection.id, baseUrl)}
+        />
+      )}
+
       {editingSecretsCollection && (
         <CollectionSecretsModal
           collection={editingSecretsCollection}
@@ -906,6 +1004,7 @@ export function Sidebar() {
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
           onRunCollection={setRunnerCollection}
+          onEditBaseUrl={setEditingBaseUrlCollection}
           onEditSpec={setEditingCollection}
           onEditSecrets={setEditingSecretsCollection}
           onDeleteCollection={handleDeleteCollection}

@@ -39,7 +39,56 @@ interface CollectionStore {
   // Helpers
   findCollectionById: (id: string) => Collection | null
   findCollectionByRequestId: (requestId: string) => Collection | null
+  getEffectiveBaseUrlForCollection: (collectionId: string) => string | undefined
+  getEffectiveBaseUrlForRequest: (requestId: string) => string | undefined
   getAllRequests: () => Request[]
+}
+
+function findCollectionPathById(collections: Collection[], targetId: string, ancestors: Collection[] = []): Collection[] | null {
+  for (const collection of collections) {
+    const nextAncestors = [...ancestors, collection]
+    if (collection.id === targetId) {
+      return nextAncestors
+    }
+
+    const nestedPath = findCollectionPathById(collection.folders, targetId, nextAncestors)
+    if (nestedPath) {
+      return nestedPath
+    }
+  }
+
+  return null
+}
+
+function findCollectionPathForRequest(collections: Collection[], requestId: string, ancestors: Collection[] = []): Collection[] | null {
+  for (const collection of collections) {
+    const nextAncestors = [...ancestors, collection]
+    if (collection.requests.some((request) => request.id === requestId)) {
+      return nextAncestors
+    }
+
+    const nestedPath = findCollectionPathForRequest(collection.folders, requestId, nextAncestors)
+    if (nestedPath) {
+      return nestedPath
+    }
+  }
+
+  return null
+}
+
+function resolveEffectiveBaseUrl(collectionPath: Collection[] | null): string | undefined {
+  if (!collectionPath) {
+    return undefined
+  }
+
+  for (let index = collectionPath.length - 1; index >= 0; index -= 1) {
+    const baseUrl = collectionPath[index].baseUrl?.trim()
+    if (baseUrl) {
+      return baseUrl
+    }
+  }
+
+  return undefined
 }
 
 export const useCollectionStore = create<CollectionStore>()(
@@ -297,6 +346,16 @@ export const useCollectionStore = create<CollectionStore>()(
     }
 
     return findInCollections(collections)
+  },
+
+  getEffectiveBaseUrlForCollection: (collectionId) => {
+    const { collections } = get()
+    return resolveEffectiveBaseUrl(findCollectionPathById(collections, collectionId))
+  },
+
+  getEffectiveBaseUrlForRequest: (requestId) => {
+    const { collections } = get()
+    return resolveEffectiveBaseUrl(findCollectionPathForRequest(collections, requestId))
   },
 
   getAllRequests: () => {

@@ -67,6 +67,22 @@ describe('requestExecution', () => {
     expect(resolved.headers.some((header) => header.key === 'X-Project' && header.value === 'proj-9')).toBe(true)
   })
 
+  it('applies the collection base url to relative request paths', () => {
+    const resolved = resolveHttpRequest({
+      ...request,
+      url: '/users/{{userId}}',
+    }, {
+      baseUrl: 'https://api.example.com/v1',
+      secrets,
+      runtimeVariables: {
+        userId: 'user-42',
+        projectId: 'proj-9',
+      },
+    })
+
+    expect(resolved.url).toBe('https://api.example.com/v1/users/user-42?include=teams')
+  })
+
   it('executes a request and returns assertions plus extracted variables', async () => {
     mockedInvoke.mockResolvedValue({
       status: 200,

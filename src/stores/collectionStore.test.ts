@@ -62,6 +62,89 @@ describe('Collection Store', () => {
       })
     })
 
+    describe('effective base url resolution', () => {
+      it('inherits a base url from ancestor folders', () => {
+        useCollectionStore.setState({
+          collections: [
+            {
+              id: 'root',
+              name: 'Root',
+              baseUrl: 'https://api.example.com',
+              requests: [],
+              folders: [
+                {
+                  id: 'child',
+                  name: 'Child',
+                  requests: [
+                    {
+                      id: 'req-1',
+                      name: 'Nested request',
+                      type: 'http',
+                      method: 'GET',
+                      url: '/users',
+                      headers: [],
+                      params: [],
+                      body: { type: 'none', content: '' },
+                    },
+                  ],
+                  folders: [],
+                  parentId: 'root',
+                },
+              ],
+            },
+          ],
+          environments: [],
+          activeEnvironmentId: null,
+          history: [],
+        })
+
+        const state = useCollectionStore.getState()
+        expect(state.getEffectiveBaseUrlForCollection('child')).toBe('https://api.example.com')
+        expect(state.getEffectiveBaseUrlForRequest('req-1')).toBe('https://api.example.com')
+      })
+
+      it('prefers the nearest folder base url override', () => {
+        useCollectionStore.setState({
+          collections: [
+            {
+              id: 'root',
+              name: 'Root',
+              baseUrl: 'https://api.example.com',
+              requests: [],
+              folders: [
+                {
+                  id: 'child',
+                  name: 'Child',
+                  baseUrl: 'https://staging.example.com',
+                  requests: [
+                    {
+                      id: 'req-2',
+                      name: 'Nested request',
+                      type: 'http',
+                      method: 'GET',
+                      url: '/users',
+                      headers: [],
+                      params: [],
+                      body: { type: 'none', content: '' },
+                    },
+                  ],
+                  folders: [],
+                  parentId: 'root',
+                },
+              ],
+            },
+          ],
+          environments: [],
+          activeEnvironmentId: null,
+          history: [],
+        })
+
+        const state = useCollectionStore.getState()
+        expect(state.getEffectiveBaseUrlForCollection('child')).toBe('https://staging.example.com')
+        expect(state.getEffectiveBaseUrlForRequest('req-2')).toBe('https://staging.example.com')
+      })
+    })
+
     describe('deleteCollection', () => {
       it('removes the collection', () => {
         const { addCollection, deleteCollection } = useCollectionStore.getState()

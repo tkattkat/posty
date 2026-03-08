@@ -20,11 +20,34 @@ export interface RunCollectionOptions {
   isCancelled?: () => boolean
 }
 
+interface RunnableRequestEntry {
+  request: HttpRequest
+  effectiveBaseUrl?: string
+}
+
 function flattenCollectionRequests(collection: Collection): HttpRequest[] {
   const requests = collection.requests.filter((request): request is HttpRequest => request.type === 'http')
   return [
     ...requests,
     ...collection.folders.flatMap((folder) => flattenCollectionRequests(folder)),
+  ]
+}
+
+function flattenRunnableRequestEntries(
+  collection: Collection,
+  inheritedBaseUrl?: string
+): RunnableRequestEntry[] {
+  const effectiveBaseUrl = collection.baseUrl?.trim() || inheritedBaseUrl
+  const requests = collection.requests
+    .filter((request): request is HttpRequest => request.type === 'http')
+    .map((request) => ({
+      request,
+      effectiveBaseUrl,
+    }))
+
+  return [
+    ...requests,
+    ...collection.folders.flatMap((folder) => flattenRunnableRequestEntries(folder, effectiveBaseUrl)),
   ]
 }
 
@@ -34,8 +57,8 @@ export function getCollectionHttpRequests(collection: Collection): HttpRequest[]
 
 export async function runCollectionRequests(options: RunCollectionOptions): Promise<RunnerResult> {
   const stopOnFail = options.stopOnFail ?? true
-  const requests = flattenCollectionRequests(options.collection)
-  const steps: RunnerStepResult[] = requests.map((request) => ({
+  const requestEntries = flattenRunnableRequestEntries(options.collection)
+  const steps: RunnerStepResult[] = requestEntries.map(({ request }) => ({
     requestId: request.id,
     requestName: request.name,
     status: 'pending',
@@ -56,13 +79,13 @@ export async function runCollectionRequests(options: RunCollectionOptions): Prom
   let runtimeVariables: RuntimeVariableMap = {}
   let runStatus: RunnerResult['status'] = 'completed'
 
-  for (let index = 0; index < requests.length; index += 1) {
+  for (let index = 0; index < requestEntries.length; index += 1) {
     if (options.isCancelled?.()) {
       runStatus = 'cancelled'
       break
     }
 
-    const request = requests[index]
+    const { request, effectiveBaseUrl } = requestEntries[index]
     const runningStep: RunnerStepResult = {
       ...steps[index],
       status: 'running',
@@ -75,6 +98,7 @@ export async function runCollectionRequests(options: RunCollectionOptions): Prom
       const result = await executeHttpRequest(request, {
         secrets: options.secrets,
         runtimeVariables,
+        baseUrl: effectiveBaseUrl,
       })
 
       runtimeVariables = { ...runtimeVariables, ...result.extractedVariables }

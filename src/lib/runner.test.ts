@@ -126,4 +126,84 @@ describe('runner', () => {
     expect(run.steps[1].status).toBe('pending')
     expect(mockedInvoke).toHaveBeenCalledTimes(1)
   })
+
+  it('inherits base urls from parent folders and allows nested overrides', async () => {
+    mockedInvoke
+      .mockResolvedValueOnce({
+        status: 200,
+        status_text: 'OK',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ok: true }),
+        time: 20,
+        size: 12,
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        status_text: 'OK',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ok: true }),
+        time: 18,
+        size: 12,
+      })
+
+    await runCollectionRequests({
+      collection: {
+        id: 'root',
+        name: 'Root',
+        baseUrl: 'https://api.example.com/v1',
+        requests: [],
+        folders: [
+          {
+            id: 'child-a',
+            name: 'Child A',
+            parentId: 'root',
+            requests: [
+              {
+                id: 'child-a-request',
+                name: 'Child A Request',
+                type: 'http',
+                method: 'GET',
+                url: '/users',
+                headers: [],
+                params: [],
+                body: { type: 'none', content: '' },
+                tests: [],
+                extractions: [],
+              },
+            ],
+            folders: [],
+          },
+          {
+            id: 'child-b',
+            name: 'Child B',
+            parentId: 'root',
+            baseUrl: 'https://staging.example.com/api',
+            requests: [
+              {
+                id: 'child-b-request',
+                name: 'Child B Request',
+                type: 'http',
+                method: 'GET',
+                url: '/users',
+                headers: [],
+                params: [],
+                body: { type: 'none', content: '' },
+                tests: [],
+                extractions: [],
+              },
+            ],
+            folders: [],
+          },
+        ],
+      },
+      stopOnFail: true,
+    })
+
+    expect(mockedInvoke).toHaveBeenNthCalledWith(1, 'send_http_request', expect.objectContaining({
+      url: 'https://api.example.com/v1/users',
+    }))
+    expect(mockedInvoke).toHaveBeenNthCalledWith(2, 'send_http_request', expect.objectContaining({
+      url: 'https://staging.example.com/api/users',
+    }))
+  })
 })

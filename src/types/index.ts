@@ -175,6 +175,7 @@ export interface Collection {
   id: string
   name: string
   description?: string
+  baseUrl?: string
   requests: Request[]
   folders: Collection[]
   parentId?: string

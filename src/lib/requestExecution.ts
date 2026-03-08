@@ -23,6 +23,7 @@ interface RawHttpResponse {
 export interface ExecutionContext {
   secrets?: SecretVariable[]
   runtimeVariables?: RuntimeVariableMap
+  baseUrl?: string
 }
 
 export function getEnabledItems(items: KeyValue[]): KeyValue[] {
@@ -38,6 +39,25 @@ export function buildRequestUrl(url: string, params: KeyValue[]): string {
     .join('&')
 
   return url.includes('?') ? `${url}&${queryString}` : `${url}?${queryString}`
+}
+
+function isAbsoluteUrl(url: string): boolean {
+  return /^[A-Za-z][A-Za-z\d+.-]*:\/\//.test(url)
+}
+
+function resolveRequestUrl(url: string, baseUrl: string): string {
+  const normalizedUrl = url.trim()
+  const normalizedBaseUrl = baseUrl.trim()
+
+  if (!normalizedUrl || !normalizedBaseUrl || isAbsoluteUrl(normalizedUrl)) {
+    return normalizedUrl
+  }
+
+  if (normalizedUrl.startsWith('?') || normalizedUrl.startsWith('#')) {
+    return `${normalizedBaseUrl.replace(/\/+$/, '')}${normalizedUrl}`
+  }
+
+  return `${normalizedBaseUrl.replace(/\/+$/, '')}/${normalizedUrl.replace(/^\/+/, '')}`
 }
 
 function resolveKeyValueItems(
@@ -79,6 +99,7 @@ export function resolveHttpRequest(
 ): HttpRequest {
   const secrets = context.secrets ?? []
   const runtimeVariables = context.runtimeVariables ?? {}
+  const baseUrl = context.baseUrl ?? ''
 
   const resolvedHeaders = resolveKeyValueItems(request.headers, secrets, runtimeVariables)
   const resolvedParams = resolveKeyValueItems(request.params, secrets, runtimeVariables)
@@ -142,7 +163,10 @@ export function resolveHttpRequest(
 
   return {
     ...request,
-    url: buildRequestUrl(resolveTemplateReferences(request.url, secrets, runtimeVariables), nextParams),
+    url: buildRequestUrl(
+      resolveRequestUrl(resolveTemplateReferences(request.url, secrets, runtimeVariables), resolveTemplateReferences(baseUrl, secrets, runtimeVariables)),
+      nextParams
+    ),
     headers: nextHeaders,
     params: nextParams,
     body: {

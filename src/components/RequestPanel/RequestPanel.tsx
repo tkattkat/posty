@@ -211,7 +211,7 @@ export function RequestPanel() {
     isLoading,
     executionResult,
   } = useRequestStore()
-  const { addToHistory, findCollectionById, findCollectionByRequestId, updateRequestInCollection } = useCollectionStore()
+  const { addToHistory, findCollectionById, findCollectionByRequestId, getEffectiveBaseUrlForCollection, getEffectiveBaseUrlForRequest, updateRequestInCollection } = useCollectionStore()
   const [activeSubTab, setActiveSubTab] = useState<'params' | 'headers' | 'body' | 'auth' | 'tests'>('params')
   const [showMethodDropdown, setShowMethodDropdown] = useState(false)
   const [showCodeGen, setShowCodeGen] = useState(false)
@@ -224,6 +224,9 @@ export function RequestPanel() {
     (activeTab?.sourceCollectionId ? findCollectionById(activeTab.sourceCollectionId) : null) ??
     (activeTab?.sourceRequestId ? findCollectionByRequestId(activeTab.sourceRequestId) : null)
   const activeSecrets = useMemo(() => activeCollection?.secrets ?? [], [activeCollection])
+  const effectiveBaseUrl =
+    (activeCollection?.id ? getEffectiveBaseUrlForCollection(activeCollection.id) : undefined) ??
+    (activeTab?.sourceRequestId ? getEffectiveBaseUrlForRequest(activeTab.sourceRequestId) : undefined)
 
   const updateRequestAndSource = useCallback((updates: Partial<Request>) => {
     updateActiveRequest(updates)
@@ -284,6 +287,7 @@ export function RequestPanel() {
     try {
       const result = await executeHttpRequest(httpRequest, {
         secrets: activeSecrets,
+        baseUrl: effectiveBaseUrl,
       })
 
       setResponse(result.response)
@@ -301,7 +305,7 @@ export function RequestPanel() {
     } finally {
       setLoading(false)
     }
-  }, [activeCollection?.id, activeSecrets, activeTab?.sourceRequestId, addToHistory, httpRequest, setExecutionResult, setLoading, setResponse])
+  }, [activeCollection?.id, activeSecrets, activeTab?.sourceRequestId, addToHistory, effectiveBaseUrl, httpRequest, setExecutionResult, setLoading, setResponse])
 
   // Keyboard shortcut to send
   useEffect(() => {
@@ -473,6 +477,11 @@ export function RequestPanel() {
             Send
           </button>
         </div>
+        {httpRequest && effectiveBaseUrl && httpRequest.url && !/^[A-Za-z][A-Za-z\d+.-]*:\/\//.test(httpRequest.url.trim()) && (
+          <p className="mt-2 text-[11px] text-text-muted">
+            Relative path resolves against <span className="font-mono text-text-secondary">{effectiveBaseUrl}</span>
+          </p>
+        )}
       </div>
 
       {/* Split View: Request Config + Response */}
