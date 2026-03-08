@@ -93,4 +93,30 @@ describe('requestExecution', () => {
     expect(result.assertions).toHaveLength(1)
     expect(result.extractedVariables).toEqual({ nextToken: 'next-token' })
   })
+
+  it('treats http errors as failed when no explicit tests exist', async () => {
+    mockedInvoke.mockResolvedValue({
+      status: 401,
+      status_text: 'Unauthorized',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ error: 'Unauthorized' }),
+      time: 42,
+      size: 28,
+    })
+
+    const result = await executeHttpRequest({
+      ...request,
+      tests: [],
+      extractions: [],
+    }, {
+      secrets,
+      runtimeVariables: {
+        userId: 'user-42',
+        projectId: 'proj-9',
+      },
+    })
+
+    expect(result.assertions).toHaveLength(0)
+    expect(result.passed).toBe(false)
+  })
 })

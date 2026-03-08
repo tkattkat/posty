@@ -5,7 +5,7 @@ import { useCollectionStore } from '../../stores/collectionStore'
 import { isCurlCommand, curlToHttpRequest } from '../../lib/curlParser'
 import { ResponsePanel } from '../ResponsePanel/ResponsePanel'
 import { CodeGeneratorModal } from '../Modals/CodeGeneratorModal'
-import type { HttpMethod, KeyValue, SecretVariable } from '../../types'
+import type { HttpMethod, KeyValue, Request, SecretVariable } from '../../types'
 import { createSecretReference, getSecretReferenceName } from '../../lib/secrets'
 import { createExecutionErrorResponse, executeHttpRequest } from '../../lib/requestExecution'
 import { RequestTestsEditor } from './RequestTestsEditor'
@@ -211,7 +211,7 @@ export function RequestPanel() {
     isLoading,
     executionResult,
   } = useRequestStore()
-  const { addToHistory, findCollectionById, findCollectionByRequestId } = useCollectionStore()
+  const { addToHistory, findCollectionById, findCollectionByRequestId, updateRequestInCollection } = useCollectionStore()
   const [activeSubTab, setActiveSubTab] = useState<'params' | 'headers' | 'body' | 'auth' | 'tests'>('params')
   const [showMethodDropdown, setShowMethodDropdown] = useState(false)
   const [showCodeGen, setShowCodeGen] = useState(false)
@@ -224,6 +224,14 @@ export function RequestPanel() {
     (activeTab?.sourceCollectionId ? findCollectionById(activeTab.sourceCollectionId) : null) ??
     (activeTab?.sourceRequestId ? findCollectionByRequestId(activeTab.sourceRequestId) : null)
   const activeSecrets = useMemo(() => activeCollection?.secrets ?? [], [activeCollection])
+
+  const updateRequestAndSource = useCallback((updates: Partial<Request>) => {
+    updateActiveRequest(updates)
+
+    if (activeTab?.sourceRequestId) {
+      updateRequestInCollection(activeTab.sourceRequestId, updates)
+    }
+  }, [activeTab?.sourceRequestId, updateActiveRequest, updateRequestInCollection])
 
   useEffect(() => {
     if (!requestSplitRef.current) return
@@ -252,7 +260,7 @@ export function RequestPanel() {
     if (isCurlCommand(value)) {
       const parsed = curlToHttpRequest(value)
       if (parsed) {
-        updateActiveRequest({
+        updateRequestAndSource({
           method: parsed.method,
           url: parsed.url,
           headers: parsed.headers,
@@ -263,7 +271,7 @@ export function RequestPanel() {
         return
       }
     }
-    updateActiveRequest({ url: value })
+    updateRequestAndSource({ url: value })
   }
 
   const handleSendRequest = useCallback(async () => {
@@ -424,7 +432,7 @@ export function RequestPanel() {
                     <button
                       key={method}
                       onClick={() => {
-                        updateActiveRequest({ method })
+                        updateRequestAndSource({ method })
                         setShowMethodDropdown(false)
                       }}
                       className="w-full px-3 py-1.5 text-left text-[13px] font-mono font-semibold hover:bg-bg-hover transition-colors"
@@ -504,7 +512,7 @@ export function RequestPanel() {
             {httpRequest && activeSubTab === 'params' && (
               <KeyValueEditor
                 items={httpRequest.params}
-                onChange={(params) => updateActiveRequest({ params })}
+                onChange={(params) => updateRequestAndSource({ params })}
                 placeholder={{ key: 'Parameter', value: 'Value' }}
               />
             )}
@@ -512,7 +520,7 @@ export function RequestPanel() {
             {httpRequest && activeSubTab === 'headers' && (
               <KeyValueEditor
                 items={httpRequest.headers}
-                onChange={(headers) => updateActiveRequest({ headers })}
+                onChange={(headers) => updateRequestAndSource({ headers })}
                 placeholder={{ key: 'Header', value: 'Value or /secret' }}
                 secrets={activeSecrets}
                 enableSecretTokens
@@ -525,7 +533,7 @@ export function RequestPanel() {
                   {(['none', 'json', 'text', 'form'] as const).map((type) => (
                     <button
                       key={type}
-                      onClick={() => updateActiveRequest({ body: { ...httpRequest.body, type } })}
+                      onClick={() => updateRequestAndSource({ body: { ...httpRequest.body, type } })}
                       className={`tab capitalize ${httpRequest.body.type === type ? 'tab-active' : ''}`}
                     >
                       {type}
@@ -535,7 +543,7 @@ export function RequestPanel() {
                 {httpRequest.body.type !== 'none' && (
                   <textarea
                     value={httpRequest.body.content}
-                    onChange={(e) => updateActiveRequest({ body: { ...httpRequest.body, content: e.target.value } })}
+                    onChange={(e) => updateRequestAndSource({ body: { ...httpRequest.body, content: e.target.value } })}
                     placeholder={httpRequest.body.type === 'json' ? '{\n  "key": "value"\n}' : 'Enter request body...'}
                     className="w-full h-48 input-field font-mono text-sm resize-none"
                   />
@@ -548,7 +556,7 @@ export function RequestPanel() {
                 <select
                   value={httpRequest.auth?.type || 'none'}
                   onChange={(e) =>
-                    updateActiveRequest({
+                    updateRequestAndSource({
                       auth: {
                         ...httpRequest.auth,
                         type: e.target.value as NonNullable<typeof httpRequest.auth>['type'],
@@ -567,7 +575,7 @@ export function RequestPanel() {
                   <input
                     type="text"
                     value={httpRequest.auth.token || ''}
-                    onChange={(e) => updateActiveRequest({ auth: { ...httpRequest.auth, type: 'bearer', token: e.target.value } })}
+                    onChange={(e) => updateRequestAndSource({ auth: { ...httpRequest.auth, type: 'bearer', token: e.target.value } })}
                     placeholder="Enter token"
                     className="input-field font-mono text-sm"
                   />
@@ -578,14 +586,14 @@ export function RequestPanel() {
                     <input
                       type="text"
                       value={httpRequest.auth.username || ''}
-                      onChange={(e) => updateActiveRequest({ auth: { ...httpRequest.auth, type: 'basic', username: e.target.value } })}
+                      onChange={(e) => updateRequestAndSource({ auth: { ...httpRequest.auth, type: 'basic', username: e.target.value } })}
                       placeholder="Username"
                       className="input-field text-sm"
                     />
                     <input
                       type="password"
                       value={httpRequest.auth.password || ''}
-                      onChange={(e) => updateActiveRequest({ auth: { ...httpRequest.auth, type: 'basic', password: e.target.value } })}
+                      onChange={(e) => updateRequestAndSource({ auth: { ...httpRequest.auth, type: 'basic', password: e.target.value } })}
                       placeholder="Password"
                       className="input-field text-sm"
                     />
@@ -597,14 +605,14 @@ export function RequestPanel() {
                     <input
                       type="text"
                       value={httpRequest.auth.key || ''}
-                      onChange={(e) => updateActiveRequest({ auth: { ...httpRequest.auth, type: 'api-key', key: e.target.value } })}
+                      onChange={(e) => updateRequestAndSource({ auth: { ...httpRequest.auth, type: 'api-key', key: e.target.value } })}
                       placeholder="Header name"
                       className="input-field text-sm"
                     />
                     <input
                       type="text"
                       value={httpRequest.auth.value || ''}
-                      onChange={(e) => updateActiveRequest({ auth: { ...httpRequest.auth, type: 'api-key', value: e.target.value } })}
+                      onChange={(e) => updateRequestAndSource({ auth: { ...httpRequest.auth, type: 'api-key', value: e.target.value } })}
                       placeholder="Value"
                       className="input-field text-sm"
                     />
@@ -616,9 +624,9 @@ export function RequestPanel() {
             {httpRequest && activeSubTab === 'tests' && (
               <RequestTestsEditor
                 tests={httpRequest.tests ?? []}
-                onTestsChange={(tests) => updateActiveRequest({ tests })}
+                onTestsChange={(tests) => updateRequestAndSource({ tests })}
                 extractions={httpRequest.extractions ?? []}
-                onExtractionsChange={(extractions) => updateActiveRequest({ extractions })}
+                onExtractionsChange={(extractions) => updateRequestAndSource({ extractions })}
                 latestExecution={executionResult}
               />
             )}

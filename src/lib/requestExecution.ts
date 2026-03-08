@@ -183,6 +183,7 @@ export async function executeHttpRequest(
 
   const assertions = evaluateRequestTests(request.tests ?? [], response)
   const extractedVariables = extractRuntimeVariables(request.extractions ?? [], response)
+  const hasAssertions = assertions.length > 0
 
   return {
     requestId: request.id,
@@ -190,7 +191,9 @@ export async function executeHttpRequest(
     response,
     assertions,
     extractedVariables,
-    passed: assertions.every((assertion) => assertion.passed),
+    passed: hasAssertions
+      ? assertions.every((assertion) => assertion.passed)
+      : response.status < 400,
   }
 }
 

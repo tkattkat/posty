@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createServer, Server, IncomingMessage, ServerResponse } from 'http'
 import { AddressInfo } from 'net'
+import { convertImportedCollection } from './openapiImport'
 
 // Sample OpenAPI 3.0 spec for testing
 const sampleOpenApi3Spec = {
@@ -252,6 +253,50 @@ describe('OpenAPI Import', () => {
 
       expect(listUsersOp.tags).toContain('users')
       expect(listPostsOp.tags).toContain('posts')
+    })
+
+    it('converts imported requests with default status-code tests', () => {
+      const converted = convertImportedCollection({
+        name: 'Test API',
+        description: 'A test API',
+        requests: [
+          {
+            id: 'request-1',
+            name: 'Create a user',
+            method: 'POST',
+            url: 'https://api.test.com/v1/users',
+            headers: [],
+            params: [],
+            body: {
+              type: 'json',
+              content: '{"name":"demo"}',
+            },
+            tests: [
+              {
+                id: 'test-1',
+                enabled: true,
+                type: 'status-code',
+                label: 'Status is 201',
+                expected_status: 201,
+              },
+            ],
+          },
+        ],
+        folders: [],
+      })
+
+      const request = converted.requests[0]
+      expect(request.type).toBe('http')
+      if (request.type !== 'http') {
+        throw new Error('Expected converted request to be HTTP')
+      }
+      expect(request.tests).toEqual([
+        expect.objectContaining({
+          type: 'status-code',
+          label: 'Status is 201',
+          expectedStatus: 201,
+        }),
+      ])
     })
   })
 

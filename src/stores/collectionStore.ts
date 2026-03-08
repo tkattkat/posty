@@ -12,6 +12,7 @@ interface CollectionStore {
   addCollection: (name: string, parentId?: string) => void
   importCollection: (collection: Collection, source?: OpenApiSource) => void
   updateCollection: (id: string, updates: Partial<Collection>) => void
+  updateRequestInCollection: (requestId: string, updates: Partial<Request>) => void
   deleteCollection: (id: string) => void
   moveCollection: (draggedId: string, targetId: string) => void
   addRequestToCollection: (collectionId: string, request: Request) => void
@@ -90,6 +91,29 @@ export const useCollectionStore = create<CollectionStore>()(
             ? { ...col, ...updates }
             : { ...col, folders: updateCollections(col.folders) }
         )
+      return { collections: updateCollections(state.collections) }
+    })
+  },
+
+  updateRequestInCollection: (requestId, updates) => {
+    set((state) => {
+      const updateCollections = (cols: Collection[]): Collection[] =>
+        cols.map((col) => {
+          const updatedRequests = col.requests.map((request) =>
+            request.id === requestId
+              ? { ...request, ...updates } as Request
+              : request
+          )
+
+          const updatedFolders = updateCollections(col.folders)
+          const requestsChanged = updatedRequests.some((request, index) => request !== col.requests[index])
+          const foldersChanged = updatedFolders !== col.folders
+
+          return requestsChanged || foldersChanged
+            ? { ...col, requests: updatedRequests, folders: updatedFolders }
+            : col
+        })
+
       return { collections: updateCollections(state.collections) }
     })
   },

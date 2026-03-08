@@ -22,6 +22,18 @@ pub struct ImportedRequest {
     pub headers: Vec<KeyValue>,
     pub params: Vec<KeyValue>,
     pub body: Option<RequestBody>,
+    pub tests: Vec<ImportedRequestTest>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ImportedRequestTest {
+    pub id: String,
+    pub enabled: bool,
+    pub r#type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_status: Option<u16>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -231,6 +243,30 @@ fn extract_media_type_content(
     }
 }
 
+fn extract_default_request_tests(op: &openapiv3::Operation) -> Vec<ImportedRequestTest> {
+    let success_status = op
+        .responses
+        .responses
+        .iter()
+        .filter_map(|(status_code, _)| match status_code {
+            openapiv3::StatusCode::Code(code) if (200..400).contains(code) => Some(*code),
+            _ => None,
+        })
+        .min();
+
+    success_status
+        .map(|status| {
+            vec![ImportedRequestTest {
+                id: uuid::Uuid::new_v4().to_string(),
+                enabled: true,
+                r#type: "status-code".to_string(),
+                label: Some(format!("Status is {}", status)),
+                expected_status: Some(status),
+            }]
+        })
+        .unwrap_or_default()
+}
+
 #[tauri::command]
 pub fn parse_openapi_spec(spec_content: String) -> Result<ImportedCollection, String> {
     let openapi: OpenAPI =
@@ -399,6 +435,7 @@ pub fn parse_openapi_spec(spec_content: String) -> Result<ImportedCollection, St
                         headers,
                         params,
                         body,
+                        tests: extract_default_request_tests(op),
                     };
 
                     // Group by tag if available
@@ -731,5 +768,40 @@ mod tests {
         assert_eq!(request.body.as_ref().unwrap().r#type, "json");
         assert!(request.body.as_ref().unwrap().content.contains("\"email\""));
         assert!(request.headers.iter().any(|header| header.key == "Content-Type"));
+    }
+
+    #[test]
+    fn test_parse_openapi_adds_default_success_test() {
+        let spec = r##"
+        {
+            "openapi": "3.0.0",
+            "info": {
+                "title": "Runner API",
+                "version": "1.0.0"
+            },
+            "paths": {
+                "/projects": {
+                    "post": {
+                        "summary": "Create project",
+                        "responses": {
+                            "201": { "description": "Created" },
+                            "400": { "description": "Bad request" }
+                        }
+                    }
+                }
+            }
+        }
+        "##;
+
+        let result = parse_openapi_spec(spec.to_string());
+        assert!(result.is_ok());
+
+        let collection = result.unwrap();
+        let request = &collection.requests[0];
+
+        assert_eq!(request.tests.len(), 1);
+        assert_eq!(request.tests[0].r#type, "status-code");
+        assert_eq!(request.tests[0].expected_status, Some(201));
+        assert!(request.tests[0].enabled);
     }
 }

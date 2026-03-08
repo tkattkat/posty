@@ -1,4 +1,4 @@
-import type { Collection, HttpRequest, KeyValue } from '../types'
+import type { Collection, HttpRequest, KeyValue, RequestTest } from '../types'
 
 export interface ImportedRequest {
   id: string
@@ -8,6 +8,13 @@ export interface ImportedRequest {
   headers: Array<{ id: string; key: string; value: string; enabled: boolean; description?: string }>
   params: Array<{ id: string; key: string; value: string; enabled: boolean; description?: string }>
   body: { type: string; content: string } | null
+  tests?: Array<{
+    id: string
+    enabled: boolean
+    type: RequestTest['type']
+    label?: string
+    expected_status?: number
+  }>
 }
 
 export interface ImportedCollection {
@@ -37,6 +44,14 @@ export function convertImportedCollection(imported: ImportedCollection): Collect
       body: req.body
         ? { type: req.body.type as 'json' | 'text' | 'form' | 'none', content: req.body.content }
         : { type: 'none', content: '' },
+      tests: (req.tests ?? []).map((test) => ({
+        id: test.id,
+        enabled: test.enabled,
+        type: test.type,
+        label: test.label,
+        expectedStatus: test.expected_status,
+      })),
+      extractions: [],
     })),
     folders: imported.folders.map(convertImportedCollection),
   }
