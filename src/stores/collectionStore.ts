@@ -13,6 +13,7 @@ interface CollectionStore {
   importCollection: (collection: Collection, source?: OpenApiSource) => void
   updateCollection: (id: string, updates: Partial<Collection>) => void
   deleteCollection: (id: string) => void
+  moveCollection: (draggedId: string, targetId: string) => void
   addRequestToCollection: (collectionId: string, request: Request) => void
   removeRequestFromCollection: (collectionId: string, requestId: string) => void
   refreshCollectionFromSource: (
@@ -100,6 +101,37 @@ export const useCollectionStore = create<CollectionStore>()(
           .filter((col) => col.id !== id)
           .map((col) => ({ ...col, folders: filterCollections(col.folders) }))
       return { collections: filterCollections(state.collections) }
+    })
+  },
+
+  moveCollection: (draggedId, targetId) => {
+    if (draggedId === targetId) return
+
+    set((state) => {
+      let moved = false
+
+      const moveInCollections = (cols: Collection[]): Collection[] => {
+        if (moved) return cols
+
+        const draggedIndex = cols.findIndex((col) => col.id === draggedId)
+        const targetIndex = cols.findIndex((col) => col.id === targetId)
+
+        if (draggedIndex !== -1 && targetIndex !== -1) {
+          const next = [...cols]
+          const [dragged] = next.splice(draggedIndex, 1)
+          const insertIndex = draggedIndex < targetIndex ? targetIndex : targetIndex
+          next.splice(insertIndex, 0, dragged)
+          moved = true
+          return next
+        }
+
+        return cols.map((col) => {
+          const nextFolders = moveInCollections(col.folders)
+          return nextFolders === col.folders ? col : { ...col, folders: nextFolders }
+        })
+      }
+
+      return { collections: moveInCollections(state.collections) }
     })
   },
 

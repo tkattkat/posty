@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { FolderPlus, Clock, ChevronDown, Folder, Upload, Sun, Moon, Monitor, RefreshCw, Edit2, GitCompare, Check, Trash2, AlertTriangle, X, Lock, Plus, Save, Eye, EyeOff } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { FolderPlus, Clock, ChevronDown, Folder, GripVertical, Upload, Sun, Moon, Monitor, RefreshCw, Edit2, GitCompare, Check, Trash2, AlertTriangle, X, Lock, Plus, Save, Eye, EyeOff } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useCollectionStore } from '../../stores/collectionStore'
 import { useRequestStore } from '../../stores/requestStore'
@@ -18,81 +18,135 @@ const methodBadgeClass: Record<string, string> = {
   HEAD: 'method-badge method-badge-head',
 }
 
+function findSiblingIds(collections: Collection[], collectionId: string): string[] | null {
+  const directMatch = collections.find((collection) => collection.id === collectionId)
+  if (directMatch) {
+    return collections.map((collection) => collection.id)
+  }
+
+  for (const collection of collections) {
+    const nestedMatch = findSiblingIds(collection.folders, collectionId)
+    if (nestedMatch) {
+      return nestedMatch
+    }
+  }
+
+  return null
+}
+
+function canReorderCollection(
+  collections: Collection[],
+  draggedCollectionId: string | null,
+  targetCollectionId: string
+) {
+  if (!draggedCollectionId || draggedCollectionId === targetCollectionId) {
+    return false
+  }
+
+  const siblingIds = findSiblingIds(collections, draggedCollectionId)
+  return siblingIds?.includes(targetCollectionId) ?? false
+}
+
+function findCollectionById(collections: Collection[], collectionId: string): Collection | null {
+  for (const collection of collections) {
+    if (collection.id === collectionId) {
+      return collection
+    }
+
+    const nested = findCollectionById(collection.folders, collectionId)
+    if (nested) {
+      return nested
+    }
+  }
+
+  return null
+}
+
 function CollectionItem({
   collection,
   depth = 0,
-  onEditSpec,
-  onDeleteCollection,
-  onEditSecrets,
   activeSourceRequestId,
+  onOpenContextMenu,
+  draggedCollectionId,
+  dropTargetCollectionId,
+  canDropOnCollection,
+  shouldSuppressToggle,
+  consumeSuppressedToggle,
+  onCollectionPointerDown,
+  onCollectionHover,
 }: {
   collection: Collection
   depth?: number
-  onEditSpec?: (collection: Collection) => void
-  onDeleteCollection?: (collection: Collection) => void
-  onEditSecrets?: (collection: Collection) => void
   activeSourceRequestId?: string | null
+  onOpenContextMenu: (collection: Collection, x: number, y: number) => void
+  draggedCollectionId?: string | null
+  dropTargetCollectionId?: string | null
+  canDropOnCollection: (targetCollectionId: string) => boolean
+  shouldSuppressToggle: () => boolean
+  consumeSuppressedToggle: () => void
+  onCollectionPointerDown: (collectionId: string, x: number, y: number) => void
+  onCollectionHover: (collectionId: string) => void
 }) {
   const [isExpanded, setIsExpanded] = useState(true)
   const { addTab } = useRequestStore()
 
-  const hasOpenApiSource = !!collection.openApiSource
+  const isDropTarget = dropTargetCollectionId === collection.id && canDropOnCollection(collection.id)
+  const isDragged = draggedCollectionId === collection.id
 
   return (
     <div>
       <div
-        className="flex items-center gap-2 px-3 py-1.5 hover:bg-bg-hover rounded cursor-pointer transition-colors group"
+        onMouseEnter={() => {
+          if (canDropOnCollection(collection.id)) {
+            onCollectionHover(collection.id)
+          }
+        }}
+        className={`relative flex min-w-0 items-center gap-2 px-3 py-1.5 rounded cursor-pointer transition-colors group ${
+          isDropTarget
+            ? 'bg-accent/10 ring-1 ring-accent/35'
+            : 'hover:bg-bg-hover'
+        } ${isDragged ? 'bg-bg-tertiary ring-1 ring-accent/25 shadow-sm opacity-70' : ''}`}
         style={{ paddingLeft: `${depth * 12 + 12}px` }}
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => {
+          if (shouldSuppressToggle()) {
+            consumeSuppressedToggle()
+            return
+          }
+          setIsExpanded(!isExpanded)
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          onOpenContextMenu(collection, e.clientX, e.clientY)
+        }}
       >
+        <button
+          type="button"
+          onMouseDown={(e) => {
+            if (e.button !== 0) return
+            e.stopPropagation()
+            onCollectionPointerDown(collection.id, e.clientX, e.clientY)
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-muted transition-colors ${
+            isDragged
+              ? 'cursor-grabbing text-text-secondary'
+              : 'cursor-grab hover:bg-bg-active hover:text-text-secondary'
+          }`}
+          title="Drag to reorder"
+          aria-label={`Drag ${collection.name}`}
+        >
+          <GripVertical className="h-3.5 w-3.5" />
+        </button>
         <span className="text-text-muted transition-transform duration-150" style={{ transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)' }}>
           <ChevronDown className="w-3 h-3" />
         </span>
         <Folder className="w-3.5 h-3.5 text-text-tertiary" />
-        <span className="text-[13px] font-medium truncate flex-1 text-text-secondary group-hover:text-text-primary">{collection.name}</span>
-        {hasOpenApiSource && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onEditSpec?.(collection)
-            }}
-            className="p-1 rounded hover:bg-bg-active opacity-0 group-hover:opacity-100 transition-opacity"
-            title={
-              collection.openApiSource?.type === 'url'
-                ? 'Refresh from URL'
-                : collection.openApiSource?.type === 'file'
-                  ? 'Refresh from file'
-                  : 'Edit spec'
-            }
-          >
-            {collection.openApiSource?.type === 'url' || collection.openApiSource?.type === 'file' ? (
-              <RefreshCw className="w-3 h-3 text-text-muted hover:text-text-secondary" />
-            ) : (
-              <Edit2 className="w-3 h-3 text-text-muted hover:text-text-secondary" />
-            )}
-          </button>
-        )}
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onEditSecrets?.(collection)
-          }}
-          className="p-1 rounded hover:bg-bg-active opacity-0 group-hover:opacity-100 transition-opacity"
-          title="Collection secrets"
-        >
-          <Lock className="w-3 h-3 text-text-muted hover:text-text-secondary" />
-        </button>
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onDeleteCollection?.(collection)
-          }}
-          className="p-1 rounded hover:bg-error-muted opacity-0 group-hover:opacity-100 transition-opacity"
-          title="Delete collection"
-        >
-          <Trash2 className="w-3 h-3 text-text-muted hover:text-error" />
-        </button>
-        <span className="text-[11px] text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-text-secondary group-hover:text-text-primary">
+          {collection.name}
+        </span>
+        <span className="text-[11px] text-text-muted">
           {collection.requests.length}
         </span>
       </div>
@@ -131,15 +185,103 @@ function CollectionItem({
               key={folder.id}
               collection={folder}
               depth={depth + 1}
-              onEditSpec={onEditSpec}
-              onDeleteCollection={onDeleteCollection}
-              onEditSecrets={onEditSecrets}
               activeSourceRequestId={activeSourceRequestId}
+              onOpenContextMenu={onOpenContextMenu}
+              draggedCollectionId={draggedCollectionId}
+              dropTargetCollectionId={dropTargetCollectionId}
+              canDropOnCollection={canDropOnCollection}
+              shouldSuppressToggle={shouldSuppressToggle}
+              consumeSuppressedToggle={consumeSuppressedToggle}
+              onCollectionPointerDown={onCollectionPointerDown}
+              onCollectionHover={onCollectionHover}
             />
           ))}
         </div>
       )}
     </div>
+  )
+}
+
+function CollectionContextMenu({
+  collection,
+  x,
+  y,
+  onClose,
+  onEditSpec,
+  onEditSecrets,
+  onDeleteCollection,
+}: {
+  collection: Collection
+  x: number
+  y: number
+  onClose: () => void
+  onEditSpec: (collection: Collection) => void
+  onEditSecrets: (collection: Collection) => void
+  onDeleteCollection: (collection: Collection) => void
+}) {
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [onClose])
+
+  const hasOpenApiSource = !!collection.openApiSource
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div
+        className="fixed z-50 min-w-48 overflow-hidden rounded-lg border border-border bg-bg-secondary shadow-2xl"
+        style={{ left: x, top: y }}
+      >
+        <button
+          onClick={() => {
+            onEditSecrets(collection)
+            onClose()
+          }}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
+        >
+          <Lock className="h-3.5 w-3.5" />
+          Collection secrets
+        </button>
+        {hasOpenApiSource && (
+          <button
+            onClick={() => {
+              onEditSpec(collection)
+              onClose()
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
+          >
+            {collection.openApiSource?.type === 'url' || collection.openApiSource?.type === 'file' ? (
+              <RefreshCw className="h-3.5 w-3.5" />
+            ) : (
+              <Edit2 className="h-3.5 w-3.5" />
+            )}
+            {collection.openApiSource?.type === 'url'
+              ? 'Refresh from URL'
+              : collection.openApiSource?.type === 'file'
+                ? 'Refresh from file'
+                : 'Edit spec'}
+          </button>
+        )}
+        <div className="border-t border-border" />
+        <button
+          onClick={() => {
+            onDeleteCollection(collection)
+            onClose()
+          }}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-error transition-colors hover:bg-error-muted"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          Delete collection
+        </button>
+      </div>
+    </>
   )
 }
 
@@ -456,7 +598,7 @@ function CollectionSecretsModal({
 
 export function Sidebar() {
   const { activePanel, setActivePanel, theme, setTheme } = useUIStore()
-  const { collections, addCollection, deleteCollection, updateCollection } = useCollectionStore()
+  const { collections, addCollection, deleteCollection, moveCollection, updateCollection } = useCollectionStore()
   const { tabs, activeTabId } = useRequestStore()
   const [isCreating, setIsCreating] = useState(false)
   const [newCollectionName, setNewCollectionName] = useState('')
@@ -465,6 +607,12 @@ export function Sidebar() {
   const [editingSecretsCollection, setEditingSecretsCollection] = useState<Collection | null>(null)
   const [diffEntries, setDiffEntries] = useState<{ left: HistoryEntry; right: HistoryEntry } | null>(null)
   const [pendingDeleteCollection, setPendingDeleteCollection] = useState<Collection | null>(null)
+  const [pendingDragCollection, setPendingDragCollection] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [draggedCollectionId, setDraggedCollectionId] = useState<string | null>(null)
+  const [dropTargetCollectionId, setDropTargetCollectionId] = useState<string | null>(null)
+  const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ collection: Collection; x: number; y: number } | null>(null)
+  const suppressNextCollectionToggleRef = useRef(false)
 
   const cycleTheme = () => {
     const themes: Array<'light' | 'dark' | 'system'> = ['light', 'dark', 'system']
@@ -504,8 +652,79 @@ export function Sidebar() {
     setEditingSecretsCollection(null)
   }
 
+  const handleCollectionDragEnd = () => {
+    setPendingDragCollection(null)
+    setDraggedCollectionId(null)
+    setDropTargetCollectionId(null)
+    setDragPosition(null)
+  }
+
+  const openCollectionContextMenu = (collection: Collection, x: number, y: number) => {
+    setContextMenu({ collection, x, y })
+  }
+
+  const handleCollectionDrop = (targetCollectionId: string) => {
+    if (!canReorderCollection(collections, draggedCollectionId, targetCollectionId) || !draggedCollectionId) {
+      handleCollectionDragEnd()
+      return
+    }
+
+    moveCollection(draggedCollectionId, targetCollectionId)
+    handleCollectionDragEnd()
+  }
+
+  useEffect(() => {
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!pendingDragCollection) return
+
+      const movedEnough =
+        Math.abs(event.clientX - pendingDragCollection.x) > 4 ||
+        Math.abs(event.clientY - pendingDragCollection.y) > 4
+
+      if (!movedEnough) return
+
+      if (!draggedCollectionId) {
+        suppressNextCollectionToggleRef.current = true
+        setDraggedCollectionId(pendingDragCollection.id)
+        setDropTargetCollectionId(pendingDragCollection.id)
+        setDragPosition({ x: event.clientX, y: event.clientY })
+        return
+      }
+
+      setDragPosition({ x: event.clientX, y: event.clientY })
+    }
+
+    const handleMouseUp = () => {
+      if (draggedCollectionId && dropTargetCollectionId) {
+        handleCollectionDrop(dropTargetCollectionId)
+        return
+      }
+
+      handleCollectionDragEnd()
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [pendingDragCollection, draggedCollectionId, dropTargetCollectionId, collections])
+
+  const draggedCollection = draggedCollectionId
+    ? findCollectionById(collections, draggedCollectionId)
+    : null
+
   return (
-    <div className="flex flex-col h-full no-drag">
+    <div
+      className="flex flex-col h-full no-drag"
+      onClick={() => {
+        if (contextMenu) {
+          setContextMenu(null)
+        }
+      }}
+    >
       {/* Segmented Control */}
       <div className="p-3 pb-2">
         <div className="segmented-control">
@@ -589,10 +808,22 @@ export function Sidebar() {
                   <CollectionItem
                     key={collection.id}
                     collection={collection}
-                    onEditSpec={setEditingCollection}
-                    onDeleteCollection={handleDeleteCollection}
-                    onEditSecrets={setEditingSecretsCollection}
                     activeSourceRequestId={activeSourceRequestId}
+                    onOpenContextMenu={openCollectionContextMenu}
+                    draggedCollectionId={draggedCollectionId}
+                    dropTargetCollectionId={dropTargetCollectionId}
+                    canDropOnCollection={(targetCollectionId) =>
+                      canReorderCollection(collections, draggedCollectionId, targetCollectionId)
+                    }
+                    shouldSuppressToggle={() => suppressNextCollectionToggleRef.current}
+                    consumeSuppressedToggle={() => {
+                      suppressNextCollectionToggleRef.current = false
+                    }}
+                    onCollectionPointerDown={(collectionId, x, y) => {
+                      setContextMenu(null)
+                      setPendingDragCollection({ id: collectionId, x, y })
+                    }}
+                    onCollectionHover={setDropTargetCollectionId}
                   />
                 ))}
               </div>
@@ -650,6 +881,32 @@ export function Sidebar() {
           onClose={() => setPendingDeleteCollection(null)}
           onConfirm={confirmDeleteCollection}
         />
+      )}
+
+      {contextMenu && (
+        <CollectionContextMenu
+          collection={contextMenu.collection}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onEditSpec={setEditingCollection}
+          onEditSecrets={setEditingSecretsCollection}
+          onDeleteCollection={handleDeleteCollection}
+        />
+      )}
+
+      {draggedCollection && dragPosition && (
+        <div
+          className="pointer-events-none fixed z-50 flex items-center gap-2 rounded-md border border-accent/30 bg-bg-tertiary px-3 py-2 text-[12px] text-text-primary shadow-2xl"
+          style={{
+            left: dragPosition.x + 14,
+            top: dragPosition.y + 14,
+          }}
+        >
+          <GripVertical className="h-3.5 w-3.5 text-text-muted" />
+          <Folder className="h-3.5 w-3.5 text-text-tertiary" />
+          <span className="max-w-56 truncate font-medium">{draggedCollection.name}</span>
+        </div>
       )}
 
       {/* Diff Modal */}
