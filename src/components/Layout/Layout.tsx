@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Sidebar } from '../Sidebar/Sidebar'
 import { RequestPanel } from '../RequestPanel/RequestPanel'
@@ -21,6 +21,7 @@ export function Layout() {
   const { isCommandPaletteOpen, openCommandPalette, closeCommandPalette, isSidebarCollapsed } = useUIStore()
   const { tabs, addTab } = useRequestStore()
   const isMacOS = import.meta.env.TAURI_ENV_PLATFORM === 'darwin'
+  const layoutRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -111,15 +112,47 @@ export function Layout() {
     return () => window.clearInterval(intervalId)
   }, [])
 
+  useEffect(() => {
+    if (!layoutRef.current) return
+    layoutRef.current.style.setProperty('--sidebar-width', '224px')
+  }, [])
+
+  const handleSidebarResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!layoutRef.current) return
+
+    event.preventDefault()
+
+    const container = layoutRef.current
+    const rect = container.getBoundingClientRect()
+    const minWidth = 180
+    const maxWidth = Math.min(420, rect.width - 480)
+
+    document.body.classList.add('is-resizing')
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextWidth = Math.min(Math.max(moveEvent.clientX - rect.left, minWidth), maxWidth)
+      container.style.setProperty('--sidebar-width', `${nextWidth}px`)
+    }
+
+    const handlePointerUp = () => {
+      document.body.classList.remove('is-resizing')
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+  }
+
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden">
+    <div ref={layoutRef} className="layout-shell flex h-full w-full flex-col overflow-hidden">
       {isMacOS && (
         <div
           data-tauri-drag-region
           className="flex h-9 flex-shrink-0 overflow-hidden border-b border-border-subtle select-none"
         >
           {!isSidebarCollapsed && (
-            <div data-tauri-drag-region className="drag-region sidebar flex w-56 items-center">
+            <div data-tauri-drag-region className="drag-region sidebar layout-sidebar-panel flex items-center">
               <div className="w-20" />
             </div>
           )}
@@ -133,9 +166,18 @@ export function Layout() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Sidebar */}
         {!isSidebarCollapsed && (
-          <aside className="w-56 flex-shrink-0 sidebar">
-            <Sidebar />
-          </aside>
+          <>
+            <aside className="layout-sidebar-panel flex-shrink-0 sidebar">
+              <Sidebar />
+            </aside>
+            <div
+              className="split-handle split-handle-vertical no-drag"
+              onPointerDown={handleSidebarResizeStart}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize sidebar"
+            />
+          </>
         )}
 
         {/* Main Content */}

@@ -224,6 +224,14 @@ body {
   border-right: 1px solid var(--border);
 }
 
+.layout-shell {
+  --sidebar-width: 224px;
+}
+
+.layout-sidebar-panel {
+  width: var(--sidebar-width);
+}
+
 .app-titlebar-main {
   background: var(--bg-primary);
 }
@@ -254,6 +262,54 @@ body {
 
 .no-drag {
   -webkit-app-region: no-drag;
+}
+
+.split-handle {
+  position: relative;
+  flex-shrink: 0;
+  user-select: none;
+  touch-action: none;
+}
+
+.split-handle::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transition: background-color 0.15s ease;
+}
+
+.split-handle:hover::before,
+.split-handle:active::before {
+  background: var(--accent-muted);
+}
+
+.split-handle-vertical {
+  width: 10px;
+  cursor: col-resize;
+}
+
+.split-handle-vertical::before {
+  left: 4px;
+  right: 4px;
+}
+
+.request-split-shell {
+  --request-pane-width: 50%;
+}
+
+.request-pane {
+  width: var(--request-pane-width);
+  border-right: 1px solid var(--border);
+}
+
+.response-pane {
+  min-width: 0;
+  flex: 1;
+}
+
+body.is-resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 
 /* Scrollbar - minimal */

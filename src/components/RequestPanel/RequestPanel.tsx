@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { X, Plus, Send, Loader2, Code, ChevronDown } from 'lucide-react'
 import { useRequestStore } from '../../stores/requestStore'
 import { useCollectionStore } from '../../stores/collectionStore'
@@ -103,9 +103,15 @@ export function RequestPanel() {
   const [activeSubTab, setActiveSubTab] = useState<'params' | 'headers' | 'body' | 'auth'>('params')
   const [showMethodDropdown, setShowMethodDropdown] = useState(false)
   const [showCodeGen, setShowCodeGen] = useState(false)
+  const requestSplitRef = useRef<HTMLDivElement | null>(null)
 
   const activeRequest = getActiveRequest()
   const httpRequest = activeRequest?.type === 'http' ? activeRequest : null
+
+  useEffect(() => {
+    if (!requestSplitRef.current) return
+    requestSplitRef.current.style.setProperty('--request-pane-width', '50%')
+  }, [])
 
   // Handle paste for curl import
   useEffect(() => {
@@ -222,6 +228,33 @@ export function RequestPanel() {
 
   const methodColor = httpRequest ? methodColors[httpRequest.method] : methodColors.GET
 
+  const handleRequestPaneResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!requestSplitRef.current) return
+
+    event.preventDefault()
+
+    const container = requestSplitRef.current
+    const rect = container.getBoundingClientRect()
+    const minWidth = 320
+    const maxWidth = rect.width - 320
+
+    document.body.classList.add('is-resizing')
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextWidth = Math.min(Math.max(moveEvent.clientX - rect.left, minWidth), maxWidth)
+      container.style.setProperty('--request-pane-width', `${nextWidth}px`)
+    }
+
+    const handlePointerUp = () => {
+      document.body.classList.remove('is-resizing')
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Tabs */}
@@ -337,9 +370,9 @@ export function RequestPanel() {
       </div>
 
       {/* Split View: Request Config + Response */}
-      <div className="flex-1 flex min-h-0">
+      <div ref={requestSplitRef} className="request-split-shell flex-1 flex min-h-0">
         {/* Request Config */}
-        <div className="w-1/2 flex flex-col border-r border-border min-h-0">
+        <div className="request-pane flex flex-col min-h-0">
           {/* Sub Tabs */}
           <div className="flex gap-1 px-4 py-2 border-b border-border flex-shrink-0">
             {(['params', 'headers', 'body', 'auth'] as const).map((tab) => (
@@ -470,8 +503,16 @@ export function RequestPanel() {
           </div>
         </div>
 
+        <div
+          className="split-handle split-handle-vertical"
+          onPointerDown={handleRequestPaneResizeStart}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize request and response panels"
+        />
+
         {/* Response Panel */}
-        <div className="w-1/2 min-h-0">
+        <div className="response-pane min-h-0">
           <ResponsePanel />
         </div>
       </div>
