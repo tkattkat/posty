@@ -44,6 +44,7 @@ export const useRequestStore = create<RequestStore>()(
       addTab: (request) => {
         // Clone the request and give it a new ID to avoid conflicts
         const baseRequest = request || createNewHttpRequest()
+        const sourceRequestId = request?.id
         const newRequest = {
           ...baseRequest,
           id: crypto.randomUUID(), // Always generate a new ID for the tab's request copy
@@ -54,6 +55,7 @@ export const useRequestStore = create<RequestStore>()(
           id: tabId,
           request: newRequest,
           isDirty: false,
+          sourceRequestId,
         }
         set((state) => ({
           tabs: [...state.tabs, newTab],

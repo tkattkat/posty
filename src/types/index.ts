@@ -133,6 +133,7 @@ export interface Tab {
   id: string
   request: Request
   isDirty: boolean
+  sourceRequestId?: string
 }
 
 // Command Palette Item

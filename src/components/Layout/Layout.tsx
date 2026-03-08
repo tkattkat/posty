@@ -116,7 +116,7 @@ export function Layout() {
       {isMacOS && (
         <div
           data-tauri-drag-region
-          className="flex h-14 flex-shrink-0 overflow-hidden border-b border-border-subtle select-none"
+          className="flex h-9 flex-shrink-0 overflow-hidden border-b border-border-subtle select-none"
         >
           {!isSidebarCollapsed && (
             <div data-tauri-drag-region className="drag-region sidebar flex w-56 items-center">

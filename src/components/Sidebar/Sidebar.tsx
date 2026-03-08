@@ -23,11 +23,13 @@ function CollectionItem({
   depth = 0,
   onEditSpec,
   onDeleteCollection,
+  activeSourceRequestId,
 }: {
   collection: Collection
   depth?: number
   onEditSpec?: (collection: Collection) => void
   onDeleteCollection?: (collection: Collection) => void
+  activeSourceRequestId?: string | null
 }) {
   const [isExpanded, setIsExpanded] = useState(true)
   const { addTab } = useRequestStore()
@@ -88,7 +90,11 @@ function CollectionItem({
           {collection.requests.map((request) => (
             <div
               key={request.id}
-              className="flex items-center gap-2 px-3 py-1.5 hover:bg-bg-hover rounded cursor-pointer transition-colors group"
+              className={`flex items-center gap-2 px-3 py-1.5 rounded cursor-pointer transition-colors group ${
+                activeSourceRequestId === request.id
+                  ? 'bg-accent/12 ring-1 ring-accent/20'
+                  : 'hover:bg-bg-hover'
+              }`}
               style={{ paddingLeft: `${(depth + 1) * 12 + 12}px` }}
               onClick={() => addTab(request)}
             >
@@ -97,7 +103,13 @@ function CollectionItem({
                   {request.method.slice(0, 3)}
                 </span>
               )}
-              <span className="text-[13px] text-text-tertiary truncate group-hover:text-text-secondary transition-colors">
+              <span
+                className={`text-[13px] truncate transition-colors ${
+                  activeSourceRequestId === request.id
+                    ? 'text-text-primary'
+                    : 'text-text-tertiary group-hover:text-text-secondary'
+                }`}
+              >
                 {request.name}
               </span>
             </div>
@@ -109,6 +121,7 @@ function CollectionItem({
               depth={depth + 1}
               onEditSpec={onEditSpec}
               onDeleteCollection={onDeleteCollection}
+              activeSourceRequestId={activeSourceRequestId}
             />
           ))}
         </div>
@@ -117,7 +130,13 @@ function CollectionItem({
   )
 }
 
-function HistoryPanel({ onCompare }: { onCompare: (left: HistoryEntry, right: HistoryEntry) => void }) {
+function HistoryPanel({
+  onCompare,
+  activeSourceRequestId,
+}: {
+  onCompare: (left: HistoryEntry, right: HistoryEntry) => void
+  activeSourceRequestId?: string | null
+}) {
   const { history } = useCollectionStore()
   const { addTab } = useRequestStore()
   const [compareMode, setCompareMode] = useState(false)
@@ -179,11 +198,16 @@ function HistoryPanel({ onCompare }: { onCompare: (left: HistoryEntry, right: Hi
       <div className="flex-1 overflow-auto py-1">
         {history.slice(0, 30).map((entry) => {
           const isSelected = selected.some(s => s.id === entry.id)
+          const isActiveEntry = activeSourceRequestId === entry.request.id
           return (
             <div
               key={entry.id}
               className={`flex items-center gap-2 px-3 py-1.5 rounded cursor-pointer transition-colors group ${
-                isSelected ? 'bg-accent/20' : 'hover:bg-bg-hover'
+                isSelected
+                  ? 'bg-accent/20'
+                  : isActiveEntry
+                    ? 'bg-accent/12 ring-1 ring-accent/20'
+                    : 'hover:bg-bg-hover'
               }`}
               onClick={() => handleClick(entry)}
             >
@@ -199,7 +223,13 @@ function HistoryPanel({ onCompare }: { onCompare: (left: HistoryEntry, right: Hi
                   {(entry.request as HttpRequest).method.slice(0, 3)}
                 </span>
               )}
-              <span className="text-[13px] text-text-tertiary truncate flex-1 group-hover:text-text-secondary transition-colors">
+              <span
+                className={`text-[13px] truncate flex-1 transition-colors ${
+                  isActiveEntry
+                    ? 'text-text-primary'
+                    : 'text-text-tertiary group-hover:text-text-secondary'
+                }`}
+              >
                 {entry.request.type === 'http' ? (() => {
                   try { return new URL((entry.request as HttpRequest).url).pathname }
                   catch { return (entry.request as HttpRequest).url || entry.request.name }
@@ -273,6 +303,7 @@ function DeleteCollectionModal({
 export function Sidebar() {
   const { activePanel, setActivePanel, theme, setTheme } = useUIStore()
   const { collections, addCollection, deleteCollection } = useCollectionStore()
+  const { tabs, activeTabId } = useRequestStore()
   const [isCreating, setIsCreating] = useState(false)
   const [newCollectionName, setNewCollectionName] = useState('')
   const [showImportModal, setShowImportModal] = useState(false)
@@ -288,6 +319,7 @@ export function Sidebar() {
   }
 
   const ThemeIcon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Monitor
+  const activeSourceRequestId = tabs.find((tab) => tab.id === activeTabId)?.sourceRequestId ?? null
 
   const handleCreateCollection = () => {
     if (newCollectionName.trim()) {
@@ -399,6 +431,7 @@ export function Sidebar() {
                     collection={collection}
                     onEditSpec={setEditingCollection}
                     onDeleteCollection={handleDeleteCollection}
+                    activeSourceRequestId={activeSourceRequestId}
                   />
                 ))}
               </div>
@@ -406,7 +439,12 @@ export function Sidebar() {
           </div>
         )}
 
-        {activePanel === 'history' && <HistoryPanel onCompare={(left, right) => setDiffEntries({ left, right })} />}
+        {activePanel === 'history' && (
+          <HistoryPanel
+            onCompare={(left, right) => setDiffEntries({ left, right })}
+            activeSourceRequestId={activeSourceRequestId}
+          />
+        )}
       </div>
 
       {/* Footer */}
