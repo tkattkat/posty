@@ -20,6 +20,7 @@ Posty is a native desktop app built with Tauri and Rust. It starts instantly, us
 - Request collections with nested folders
 - Environment variables with scoping
 - Request history (auto-saved, searchable)
+- Request diff comparison (compare any two requests side-by-side)
 - OpenAPI/Swagger import with auto-generated request templates
 - Import from cURL commands (paste directly into URL bar)
 - Code generation: cURL, JavaScript, Python, Go, Rust, PHP

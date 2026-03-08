@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { FolderPlus, Clock, ChevronDown, Folder, Upload, Sun, Moon, Monitor, RefreshCw, Edit2 } from 'lucide-react'
+import { FolderPlus, Clock, ChevronDown, Folder, Upload, Sun, Moon, Monitor, RefreshCw, Edit2, GitCompare, Check } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useCollectionStore } from '../../stores/collectionStore'
 import { useRequestStore } from '../../stores/requestStore'
 import { ImportModal } from '../ImportModal/ImportModal'
 import { EditSpecModal } from '../Modals/EditSpecModal'
-import type { Collection, HttpRequest } from '../../types'
+import { DiffModal } from '../Modals/DiffModal'
+import type { Collection, HttpRequest, HistoryEntry } from '../../types'
 
 const methodBadgeClass: Record<string, string> = {
   GET: 'method-badge method-badge-get',
@@ -84,9 +85,11 @@ function CollectionItem({ collection, depth = 0, onEditSpec }: { collection: Col
   )
 }
 
-function HistoryPanel() {
+function HistoryPanel({ onCompare }: { onCompare: (left: HistoryEntry, right: HistoryEntry) => void }) {
   const { history } = useCollectionStore()
   const { addTab } = useRequestStore()
+  const [compareMode, setCompareMode] = useState(false)
+  const [selected, setSelected] = useState<HistoryEntry[]>([])
 
   if (history.length === 0) {
     return (
@@ -100,30 +103,83 @@ function HistoryPanel() {
     )
   }
 
+  const handleClick = (entry: HistoryEntry) => {
+    if (compareMode) {
+      if (selected.some(s => s.id === entry.id)) {
+        setSelected(selected.filter(s => s.id !== entry.id))
+      } else if (selected.length < 2) {
+        const newSelected = [...selected, entry]
+        setSelected(newSelected)
+        if (newSelected.length === 2) {
+          onCompare(newSelected[0], newSelected[1])
+          setCompareMode(false)
+          setSelected([])
+        }
+      }
+    } else {
+      addTab(entry.request)
+    }
+  }
+
+  const toggleCompareMode = () => {
+    setCompareMode(!compareMode)
+    setSelected([])
+  }
+
   return (
-    <div className="py-1">
-      {history.slice(0, 20).map((entry) => (
-        <div
-          key={entry.id}
-          className="flex items-center gap-2 px-3 py-1.5 hover:bg-bg-hover rounded cursor-pointer transition-colors group"
-          onClick={() => addTab(entry.request)}
+    <div className="flex flex-col h-full">
+      {/* Compare button */}
+      <div className="px-2 pb-2">
+        <button
+          onClick={toggleCompareMode}
+          className={`w-full flex items-center justify-center gap-1.5 text-[12px] py-1.5 rounded transition-colors ${
+            compareMode
+              ? 'bg-accent text-white'
+              : 'btn-ghost'
+          }`}
         >
-          {entry.request.type === 'http' && (
-            <span className={methodBadgeClass[(entry.request as HttpRequest).method]}>
-              {(entry.request as HttpRequest).method.slice(0, 3)}
-            </span>
-          )}
-          <span className="text-[13px] text-text-tertiary truncate flex-1 group-hover:text-text-secondary transition-colors">
-            {entry.request.type === 'http' ? (() => {
-              try { return new URL((entry.request as HttpRequest).url).pathname }
-              catch { return (entry.request as HttpRequest).url || entry.request.name }
-            })() : entry.request.name}
-          </span>
-          <span className="text-[10px] text-text-muted tabular-nums font-mono">
-            {new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </span>
-        </div>
-      ))}
+          <GitCompare className="w-3.5 h-3.5" />
+          {compareMode ? `Select 2 to compare (${selected.length}/2)` : 'Compare'}
+        </button>
+      </div>
+
+      {/* History list */}
+      <div className="flex-1 overflow-auto py-1">
+        {history.slice(0, 30).map((entry) => {
+          const isSelected = selected.some(s => s.id === entry.id)
+          return (
+            <div
+              key={entry.id}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded cursor-pointer transition-colors group ${
+                isSelected ? 'bg-accent/20' : 'hover:bg-bg-hover'
+              }`}
+              onClick={() => handleClick(entry)}
+            >
+              {compareMode && (
+                <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
+                  isSelected ? 'bg-accent border-accent' : 'border-border'
+                }`}>
+                  {isSelected && <Check className="w-3 h-3 text-white" />}
+                </div>
+              )}
+              {entry.request.type === 'http' && (
+                <span className={methodBadgeClass[(entry.request as HttpRequest).method]}>
+                  {(entry.request as HttpRequest).method.slice(0, 3)}
+                </span>
+              )}
+              <span className="text-[13px] text-text-tertiary truncate flex-1 group-hover:text-text-secondary transition-colors">
+                {entry.request.type === 'http' ? (() => {
+                  try { return new URL((entry.request as HttpRequest).url).pathname }
+                  catch { return (entry.request as HttpRequest).url || entry.request.name }
+                })() : entry.request.name}
+              </span>
+              <span className="text-[10px] text-text-muted tabular-nums font-mono">
+                {new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -135,6 +191,7 @@ export function Sidebar() {
   const [newCollectionName, setNewCollectionName] = useState('')
   const [showImportModal, setShowImportModal] = useState(false)
   const [editingCollection, setEditingCollection] = useState<Collection | null>(null)
+  const [diffEntries, setDiffEntries] = useState<{ left: HistoryEntry; right: HistoryEntry } | null>(null)
 
   const cycleTheme = () => {
     const themes: Array<'light' | 'dark' | 'system'> = ['light', 'dark', 'system']
@@ -242,7 +299,7 @@ export function Sidebar() {
           </div>
         )}
 
-        {activePanel === 'history' && <HistoryPanel />}
+        {activePanel === 'history' && <HistoryPanel onCompare={(left, right) => setDiffEntries({ left, right })} />}
       </div>
 
       {/* Footer */}
@@ -270,6 +327,15 @@ export function Sidebar() {
         <EditSpecModal
           collection={editingCollection}
           onClose={() => setEditingCollection(null)}
+        />
+      )}
+
+      {/* Diff Modal */}
+      {diffEntries && (
+        <DiffModal
+          left={diffEntries.left}
+          right={diffEntries.right}
+          onClose={() => setDiffEntries(null)}
         />
       )}
     </div>
