@@ -59,6 +59,42 @@ Posty can import OpenAPI specs from local files as well as remote sources.
 - Refresh the collection when the source file changes
 - Pull in request templates, body examples, and supported auth headers from the spec
 
+## Collection Testing
+
+Posty can run an entire collection or folder in sequence so you can validate multi-step flows instead of firing requests one at a time.
+
+- Run a full collection or a nested folder from the collection context menu
+- Execute requests sequentially with shared runtime variables between steps
+- Stop on the first failure or continue through the full run
+- See live pass/fail status, response codes, and extracted runtime variables in the runner modal
+- Re-run the same flow quickly while iterating on auth, request bodies, or extracted values
+
+This is especially useful for login-to-resource workflows where one request extracts a token or ID and later requests reference it with `{{variableName}}`.
+
+<!-- Add collection runner screenshot here, for example:
+![Collection runner](screenshots/collection-runner.png)
+-->
+
+## Request Testing
+
+Each HTTP request can also define its own lightweight test and extraction rules in the `Tests` tab.
+
+- Add assertions for status codes, headers, JSON paths, and response time
+- Extract response values into runtime variables for later requests in a collection run
+- Review the latest assertion results directly in the request editor after sending a request
+- Let imported OpenAPI requests start with sensible default success status assertions
+- Catch unexpected `4xx` and `5xx` responses even when no manual assertions are defined
+
+Typical setup:
+
+- Add a status-code test to confirm the request returns the expected response
+- Add a JSON path extraction such as `token` or `project.id`
+- Reference that extracted value later with `{{token}}` or `{{projectId}}`
+
+<!-- Add request testing screenshot here, for example:
+![Request tests editor](screenshots/request-tests.png)
+-->
+
 ## Development
 
 ```bash
