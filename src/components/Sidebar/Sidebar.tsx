@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { FolderPlus, Clock, ChevronDown, Folder, Upload, Sun, Moon, Monitor } from 'lucide-react'
+import { FolderPlus, Clock, ChevronDown, Folder, Upload, Sun, Moon, Monitor, RefreshCw, Edit2 } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useCollectionStore } from '../../stores/collectionStore'
 import { useRequestStore } from '../../stores/requestStore'
 import { ImportModal } from '../ImportModal/ImportModal'
+import { EditSpecModal } from '../Modals/EditSpecModal'
 import type { Collection, HttpRequest } from '../../types'
 
 const methodBadgeClass: Record<string, string> = {
@@ -16,9 +17,11 @@ const methodBadgeClass: Record<string, string> = {
   HEAD: 'method-badge method-badge-head',
 }
 
-function CollectionItem({ collection, depth = 0 }: { collection: Collection; depth?: number }) {
+function CollectionItem({ collection, depth = 0, onEditSpec }: { collection: Collection; depth?: number; onEditSpec?: (collection: Collection) => void }) {
   const [isExpanded, setIsExpanded] = useState(true)
   const { addTab } = useRequestStore()
+
+  const hasOpenApiSource = !!collection.openApiSource
 
   return (
     <div>
@@ -32,6 +35,22 @@ function CollectionItem({ collection, depth = 0 }: { collection: Collection; dep
         </span>
         <Folder className="w-3.5 h-3.5 text-text-tertiary" />
         <span className="text-[13px] font-medium truncate flex-1 text-text-secondary group-hover:text-text-primary">{collection.name}</span>
+        {hasOpenApiSource && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onEditSpec?.(collection)
+            }}
+            className="p-1 rounded hover:bg-bg-active opacity-0 group-hover:opacity-100 transition-opacity"
+            title={collection.openApiSource?.type === 'url' ? 'Refresh from URL' : 'Edit spec'}
+          >
+            {collection.openApiSource?.type === 'url' ? (
+              <RefreshCw className="w-3 h-3 text-text-muted hover:text-text-secondary" />
+            ) : (
+              <Edit2 className="w-3 h-3 text-text-muted hover:text-text-secondary" />
+            )}
+          </button>
+        )}
         <span className="text-[11px] text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
           {collection.requests.length}
         </span>
@@ -57,7 +76,7 @@ function CollectionItem({ collection, depth = 0 }: { collection: Collection; dep
             </div>
           ))}
           {collection.folders.map((folder) => (
-            <CollectionItem key={folder.id} collection={folder} depth={depth + 1} />
+            <CollectionItem key={folder.id} collection={folder} depth={depth + 1} onEditSpec={onEditSpec} />
           ))}
         </div>
       )}
@@ -115,6 +134,7 @@ export function Sidebar() {
   const [isCreating, setIsCreating] = useState(false)
   const [newCollectionName, setNewCollectionName] = useState('')
   const [showImportModal, setShowImportModal] = useState(false)
+  const [editingCollection, setEditingCollection] = useState<Collection | null>(null)
 
   const cycleTheme = () => {
     const themes: Array<'light' | 'dark' | 'system'> = ['light', 'dark', 'system']
@@ -215,7 +235,7 @@ export function Sidebar() {
             ) : (
               <div>
                 {collections.map((collection) => (
-                  <CollectionItem key={collection.id} collection={collection} />
+                  <CollectionItem key={collection.id} collection={collection} onEditSpec={setEditingCollection} />
                 ))}
               </div>
             )}
@@ -244,6 +264,14 @@ export function Sidebar() {
 
       {/* Import Modal */}
       {showImportModal && <ImportModal onClose={() => setShowImportModal(false)} />}
+
+      {/* Edit Spec Modal */}
+      {editingCollection && (
+        <EditSpecModal
+          collection={editingCollection}
+          onClose={() => setEditingCollection(null)}
+        />
+      )}
     </div>
   )
 }

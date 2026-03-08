@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Collection, Request, Environment, HistoryEntry } from '../types'
+import type { Collection, Request, Environment, HistoryEntry, OpenApiSource } from '../types'
 
 interface CollectionStore {
   collections: Collection[]
@@ -10,11 +10,12 @@ interface CollectionStore {
 
   // Collection actions
   addCollection: (name: string, parentId?: string) => void
-  importCollection: (collection: Collection) => void
+  importCollection: (collection: Collection, source?: OpenApiSource) => void
   updateCollection: (id: string, updates: Partial<Collection>) => void
   deleteCollection: (id: string) => void
   addRequestToCollection: (collectionId: string, request: Request) => void
   removeRequestFromCollection: (collectionId: string, requestId: string) => void
+  refreshCollectionFromSource: (id: string, newRequests: Request[], newFolders: Collection[]) => void
 
   // Environment actions
   addEnvironment: (name: string) => void
@@ -66,8 +67,11 @@ export const useCollectionStore = create<CollectionStore>()(
     })
   },
 
-  importCollection: (collection) => {
-    set((state) => ({ collections: [...state.collections, collection] }))
+  importCollection: (collection, source) => {
+    const collectionWithSource = source
+      ? { ...collection, openApiSource: { ...source, lastUpdated: Date.now() } }
+      : collection
+    set((state) => ({ collections: [...state.collections, collectionWithSource] }))
   },
 
   updateCollection: (id, updates) => {
@@ -110,6 +114,25 @@ export const useCollectionStore = create<CollectionStore>()(
         cols.map((col) =>
           col.id === collectionId
             ? { ...col, requests: col.requests.filter((r) => r.id !== requestId) }
+            : { ...col, folders: updateCollections(col.folders) }
+        )
+      return { collections: updateCollections(state.collections) }
+    })
+  },
+
+  refreshCollectionFromSource: (id, newRequests, newFolders) => {
+    set((state) => {
+      const updateCollections = (cols: Collection[]): Collection[] =>
+        cols.map((col) =>
+          col.id === id
+            ? {
+                ...col,
+                requests: newRequests,
+                folders: newFolders,
+                openApiSource: col.openApiSource
+                  ? { ...col.openApiSource, lastUpdated: Date.now() }
+                  : undefined,
+              }
             : { ...col, folders: updateCollections(col.folders) }
         )
       return { collections: updateCollections(state.collections) }

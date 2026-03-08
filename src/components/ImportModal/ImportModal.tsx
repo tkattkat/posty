@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { X, Upload, Link, FileJson, Loader2, Check, AlertCircle } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { useCollectionStore } from '../../stores/collectionStore'
-import type { Collection, HttpRequest, KeyValue } from '../../types'
+import type { Collection, HttpRequest, KeyValue, OpenApiSource } from '../../types'
 
 interface ImportedRequest {
   id: string
@@ -74,7 +74,13 @@ export function ImportModal({ onClose }: ImportModalProps) {
       }
 
       const collection = convertImportedCollection(result)
-      importCollection(collection)
+
+      // Store the source info for refresh/edit later
+      const source: OpenApiSource = mode === 'url'
+        ? { type: 'url', url: url.trim() }
+        : { type: 'text', spec: specContent.trim() }
+
+      importCollection(collection, source)
 
       const requestCount = countRequests(result)
       setSuccess(`Imported "${result.name}" with ${requestCount} requests`)

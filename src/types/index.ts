@@ -91,6 +91,14 @@ export interface WebSocketMessage {
   timestamp: number
 }
 
+// OpenAPI source info for collections
+export interface OpenApiSource {
+  type: 'url' | 'text'
+  url?: string
+  spec?: string
+  lastUpdated?: number
+}
+
 // Collection
 export interface Collection {
   id: string
@@ -99,6 +107,7 @@ export interface Collection {
   requests: Request[]
   folders: Collection[]
   parentId?: string
+  openApiSource?: OpenApiSource
 }
 
 // Environment
