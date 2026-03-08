@@ -71,9 +71,8 @@ Posty can run an entire collection or folder in sequence so you can validate mul
 
 This is especially useful for login-to-resource workflows where one request extracts a token or ID and later requests reference it with `{{variableName}}`.
 
-<!-- Add collection runner screenshot here, for example:
-![Collection runner](screenshots/collection-runner.png)
--->
+<img width="2916" height="1874" alt="image" src="https://github.com/user-attachments/assets/1501bdbd-2fcb-4aca-911b-0bfef6c909c7" />
+
 
 ## Request Testing
 
@@ -91,9 +90,8 @@ Typical setup:
 - Add a JSON path extraction such as `token` or `project.id`
 - Reference that extracted value later with `{{token}}` or `{{projectId}}`
 
-<!-- Add request testing screenshot here, for example:
-![Request tests editor](screenshots/request-tests.png)
--->
+<img width="2916" height="1874" alt="image" src="https://github.com/user-attachments/assets/11730fa4-cc0f-40d3-9130-25b85b2dc898" />
+
 
 ## Development
 
