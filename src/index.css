@@ -224,6 +224,10 @@ body {
   border-right: 1px solid var(--border);
 }
 
+.app-titlebar-main {
+  background: var(--bg-primary);
+}
+
 /* Card/Panel styling */
 .panel {
   background: var(--surface);
