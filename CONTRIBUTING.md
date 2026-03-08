@@ -4,15 +4,15 @@ Thanks for your interest in contributing.
 
 ## Development Setup
 
-1. Install dependencies: `npm install`
-2. Start dev server: `npm run tauri dev`
-3. Run tests: `npm test`
+1. Install dependencies: `pnpm install`
+2. Start dev server: `pnpm tauri dev`
+3. Run tests: `pnpm test`
 
 ## Pull Requests
 
 - Keep changes focused and minimal
 - Add tests for new functionality
-- Run `npm test` before submitting
+- Run `pnpm test` before submitting
 
 ## Reporting Issues
 
