@@ -2,47 +2,11 @@ import { useState } from 'react'
 import { X, Save, Loader2, Check, AlertCircle, RefreshCw } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { useCollectionStore } from '../../stores/collectionStore'
-import type { Collection, HttpRequest, KeyValue } from '../../types'
+import type { Collection } from '../../types'
+import { convertImportedCollectionContents, type ImportedCollection } from '../../lib/openapiImport'
 
-interface ImportedRequest {
-  id: string
-  name: string
-  method: string
-  url: string
-  headers: Array<{ id: string; key: string; value: string; enabled: boolean; description?: string }>
-  params: Array<{ id: string; key: string; value: string; enabled: boolean; description?: string }>
-  body: { type: string; content: string } | null
-}
-
-interface ImportedCollection {
-  name: string
-  description: string | null
-  requests: ImportedRequest[]
-  folders: ImportedCollection[]
-}
-
-function convertImportedCollection(imported: ImportedCollection): { requests: HttpRequest[], folders: Collection[] } {
-  return {
-    requests: imported.requests.map((req): HttpRequest => ({
-      id: crypto.randomUUID(),
-      type: 'http',
-      name: req.name,
-      method: req.method as HttpRequest['method'],
-      url: req.url,
-      headers: req.headers as KeyValue[],
-      params: req.params as KeyValue[],
-      body: req.body ? { type: req.body.type as 'json' | 'text' | 'form' | 'none', content: req.body.content } : { type: 'none', content: '' },
-    })),
-    folders: imported.folders.map((folder) => {
-      const converted = convertImportedCollection(folder)
-      return {
-        id: crypto.randomUUID(),
-        name: folder.name,
-        requests: converted.requests,
-        folders: converted.folders,
-      }
-    }),
-  }
+interface OpenApiFileMetadata {
+  modified_at: number
 }
 
 interface EditSpecModalProps {
@@ -53,6 +17,7 @@ interface EditSpecModalProps {
 export function EditSpecModal({ collection, onClose }: EditSpecModalProps) {
   const source = collection.openApiSource
   const isUrlBased = source?.type === 'url'
+  const isFileBased = source?.type === 'file'
 
   const [specContent, setSpecContent] = useState(source?.spec || '')
   const [isLoading, setIsLoading] = useState(false)
@@ -62,17 +27,27 @@ export function EditSpecModal({ collection, onClose }: EditSpecModalProps) {
   const { refreshCollectionFromSource, updateCollection } = useCollectionStore()
 
   const handleRefresh = async () => {
-    if (!source?.url) return
+    if (!source) return
 
     setIsLoading(true)
     setError(null)
     setSuccess(null)
 
     try {
-      const result = await invoke<ImportedCollection>('fetch_and_parse_openapi', { url: source.url })
-      const { requests, folders } = convertImportedCollection(result)
+      const result = isFileBased
+        ? await invoke<ImportedCollection>('parse_openapi_file', { filePath: source.path })
+        : await invoke<ImportedCollection>('fetch_and_parse_openapi', { url: source.url })
+      const { requests, folders } = convertImportedCollectionContents(result)
 
-      refreshCollectionFromSource(collection.id, requests, folders)
+      const sourceUpdates = isFileBased
+        ? {
+            sourceModifiedAt: (
+              await invoke<OpenApiFileMetadata>('get_openapi_file_metadata', { filePath: source.path })
+            ).modified_at,
+          }
+        : undefined
+
+      refreshCollectionFromSource(collection.id, requests, folders, sourceUpdates)
       setSuccess(`Refreshed with ${requests.length} requests`)
 
       setTimeout(onClose, 1500)
@@ -95,7 +70,7 @@ export function EditSpecModal({ collection, onClose }: EditSpecModalProps) {
 
     try {
       const result = await invoke<ImportedCollection>('parse_openapi_spec', { specContent: specContent.trim() })
-      const { requests, folders } = convertImportedCollection(result)
+      const { requests, folders } = convertImportedCollectionContents(result)
 
       refreshCollectionFromSource(collection.id, requests, folders)
 
@@ -134,7 +109,7 @@ export function EditSpecModal({ collection, onClose }: EditSpecModalProps) {
           <div className="flex items-center gap-2">
             <RefreshCw className="w-4 h-4 text-text-secondary" />
             <span className="text-[14px] font-medium">
-              {isUrlBased ? 'Refresh Collection' : 'Edit Spec'}
+              {isUrlBased || isFileBased ? 'Refresh Collection' : 'Edit Spec'}
             </span>
           </div>
           <button
@@ -147,14 +122,14 @@ export function EditSpecModal({ collection, onClose }: EditSpecModalProps) {
 
         {/* Content */}
         <div className="p-4 flex-1 overflow-auto">
-          {isUrlBased ? (
+          {isUrlBased || isFileBased ? (
             <div>
               <label className="block text-[12px] text-text-secondary mb-2">
-                Source URL
+                {isFileBased ? 'Source File' : 'Source URL'}
               </label>
               <input
                 type="text"
-                value={source?.url || ''}
+                value={isFileBased ? source?.path || '' : source?.url || ''}
                 disabled
                 className="input-field text-[13px] font-mono opacity-60"
               />
@@ -162,7 +137,9 @@ export function EditSpecModal({ collection, onClose }: EditSpecModalProps) {
                 Last updated: {lastUpdated}
               </p>
               <p className="text-[12px] text-text-secondary mt-4">
-                Click refresh to fetch the latest spec from the URL and update all requests in this collection.
+                {isFileBased
+                  ? 'Click refresh to re-read the current local spec file and update all requests in this collection.'
+                  : 'Click refresh to fetch the latest spec from the URL and update all requests in this collection.'}
               </p>
             </div>
           ) : (
@@ -204,7 +181,7 @@ export function EditSpecModal({ collection, onClose }: EditSpecModalProps) {
           <button onClick={onClose} className="btn-secondary">
             Cancel
           </button>
-          {isUrlBased ? (
+          {isUrlBased || isFileBased ? (
             <button
               onClick={handleRefresh}
               disabled={isLoading}

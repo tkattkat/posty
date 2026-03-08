@@ -22,6 +22,9 @@ pub fn run() {
             // OpenAPI
             commands::openapi::parse_openapi_spec,
             commands::openapi::fetch_and_parse_openapi,
+            commands::openapi::pick_openapi_file,
+            commands::openapi::parse_openapi_file,
+            commands::openapi::get_openapi_file_metadata,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

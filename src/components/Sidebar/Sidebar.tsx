@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FolderPlus, Clock, ChevronDown, Folder, Upload, Sun, Moon, Monitor, RefreshCw, Edit2, GitCompare, Check } from 'lucide-react'
+import { FolderPlus, Clock, ChevronDown, Folder, Upload, Sun, Moon, Monitor, RefreshCw, Edit2, GitCompare, Check, Trash2, AlertTriangle, X } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useCollectionStore } from '../../stores/collectionStore'
 import { useRequestStore } from '../../stores/requestStore'
@@ -18,7 +18,17 @@ const methodBadgeClass: Record<string, string> = {
   HEAD: 'method-badge method-badge-head',
 }
 
-function CollectionItem({ collection, depth = 0, onEditSpec }: { collection: Collection; depth?: number; onEditSpec?: (collection: Collection) => void }) {
+function CollectionItem({
+  collection,
+  depth = 0,
+  onEditSpec,
+  onDeleteCollection,
+}: {
+  collection: Collection
+  depth?: number
+  onEditSpec?: (collection: Collection) => void
+  onDeleteCollection?: (collection: Collection) => void
+}) {
   const [isExpanded, setIsExpanded] = useState(true)
   const { addTab } = useRequestStore()
 
@@ -43,15 +53,31 @@ function CollectionItem({ collection, depth = 0, onEditSpec }: { collection: Col
               onEditSpec?.(collection)
             }}
             className="p-1 rounded hover:bg-bg-active opacity-0 group-hover:opacity-100 transition-opacity"
-            title={collection.openApiSource?.type === 'url' ? 'Refresh from URL' : 'Edit spec'}
+            title={
+              collection.openApiSource?.type === 'url'
+                ? 'Refresh from URL'
+                : collection.openApiSource?.type === 'file'
+                  ? 'Refresh from file'
+                  : 'Edit spec'
+            }
           >
-            {collection.openApiSource?.type === 'url' ? (
+            {collection.openApiSource?.type === 'url' || collection.openApiSource?.type === 'file' ? (
               <RefreshCw className="w-3 h-3 text-text-muted hover:text-text-secondary" />
             ) : (
               <Edit2 className="w-3 h-3 text-text-muted hover:text-text-secondary" />
             )}
           </button>
         )}
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onDeleteCollection?.(collection)
+          }}
+          className="p-1 rounded hover:bg-error-muted opacity-0 group-hover:opacity-100 transition-opacity"
+          title="Delete collection"
+        >
+          <Trash2 className="w-3 h-3 text-text-muted hover:text-error" />
+        </button>
         <span className="text-[11px] text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
           {collection.requests.length}
         </span>
@@ -77,7 +103,13 @@ function CollectionItem({ collection, depth = 0, onEditSpec }: { collection: Col
             </div>
           ))}
           {collection.folders.map((folder) => (
-            <CollectionItem key={folder.id} collection={folder} depth={depth + 1} onEditSpec={onEditSpec} />
+            <CollectionItem
+              key={folder.id}
+              collection={folder}
+              depth={depth + 1}
+              onEditSpec={onEditSpec}
+              onDeleteCollection={onDeleteCollection}
+            />
           ))}
         </div>
       )}
@@ -184,14 +216,69 @@ function HistoryPanel({ onCompare }: { onCompare: (left: HistoryEntry, right: Hi
   )
 }
 
+function DeleteCollectionModal({
+  collection,
+  onClose,
+  onConfirm,
+}: {
+  collection: Collection
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div
+        className="relative w-full max-w-md glass-elevated rounded-lg flex flex-col animate-scale-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-error" />
+            <span className="text-[14px] font-medium">Delete Collection</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-bg-hover rounded transition-colors text-text-muted hover:text-text-secondary"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-4 py-4">
+          <p className="text-[13px] text-text-primary">
+            Delete "{collection.name}" and all nested requests/folders?
+          </p>
+          <p className="mt-2 text-[12px] text-text-secondary">
+            This cannot be undone.
+          </p>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
+          <button onClick={onClose} className="btn-secondary">
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 rounded bg-error text-white hover:opacity-90 transition-opacity"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Sidebar() {
   const { activePanel, setActivePanel, theme, setTheme } = useUIStore()
-  const { collections, addCollection } = useCollectionStore()
+  const { collections, addCollection, deleteCollection } = useCollectionStore()
   const [isCreating, setIsCreating] = useState(false)
   const [newCollectionName, setNewCollectionName] = useState('')
   const [showImportModal, setShowImportModal] = useState(false)
   const [editingCollection, setEditingCollection] = useState<Collection | null>(null)
   const [diffEntries, setDiffEntries] = useState<{ left: HistoryEntry; right: HistoryEntry } | null>(null)
+  const [pendingDeleteCollection, setPendingDeleteCollection] = useState<Collection | null>(null)
 
   const cycleTheme = () => {
     const themes: Array<'light' | 'dark' | 'system'> = ['light', 'dark', 'system']
@@ -208,6 +295,21 @@ export function Sidebar() {
       setNewCollectionName('')
       setIsCreating(false)
     }
+  }
+
+  const handleDeleteCollection = (collection: Collection) => {
+    setPendingDeleteCollection(collection)
+  }
+
+  const confirmDeleteCollection = () => {
+    if (!pendingDeleteCollection) return
+
+    if (editingCollection?.id === pendingDeleteCollection.id) {
+      setEditingCollection(null)
+    }
+
+    deleteCollection(pendingDeleteCollection.id)
+    setPendingDeleteCollection(null)
   }
 
   return (
@@ -292,7 +394,12 @@ export function Sidebar() {
             ) : (
               <div>
                 {collections.map((collection) => (
-                  <CollectionItem key={collection.id} collection={collection} onEditSpec={setEditingCollection} />
+                  <CollectionItem
+                    key={collection.id}
+                    collection={collection}
+                    onEditSpec={setEditingCollection}
+                    onDeleteCollection={handleDeleteCollection}
+                  />
                 ))}
               </div>
             )}
@@ -327,6 +434,14 @@ export function Sidebar() {
         <EditSpecModal
           collection={editingCollection}
           onClose={() => setEditingCollection(null)}
+        />
+      )}
+
+      {pendingDeleteCollection && (
+        <DeleteCollectionModal
+          collection={pendingDeleteCollection}
+          onClose={() => setPendingDeleteCollection(null)}
+          onConfirm={confirmDeleteCollection}
         />
       )}
 

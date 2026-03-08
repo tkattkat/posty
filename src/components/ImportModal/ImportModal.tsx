@@ -1,42 +1,17 @@
 import { useState } from 'react'
-import { X, Upload, Link, FileJson, Loader2, Check, AlertCircle } from 'lucide-react'
+import { X, Upload, Link, FileJson, Loader2, Check, AlertCircle, FolderOpen } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { useCollectionStore } from '../../stores/collectionStore'
-import type { Collection, HttpRequest, KeyValue, OpenApiSource } from '../../types'
+import type { OpenApiSource } from '../../types'
+import {
+  convertImportedCollection,
+  countImportedRequests,
+  type ImportedCollection,
+  type PickedOpenApiFile,
+} from '../../lib/openapiImport'
 
-interface ImportedRequest {
-  id: string
-  name: string
-  method: string
-  url: string
-  headers: Array<{ id: string; key: string; value: string; enabled: boolean; description?: string }>
-  params: Array<{ id: string; key: string; value: string; enabled: boolean; description?: string }>
-  body: { type: string; content: string } | null
-}
-
-interface ImportedCollection {
-  name: string
-  description: string | null
-  requests: ImportedRequest[]
-  folders: ImportedCollection[]
-}
-
-function convertImportedCollection(imported: ImportedCollection): Collection {
-  return {
-    id: crypto.randomUUID(),
-    name: imported.name,
-    requests: imported.requests.map((req): HttpRequest => ({
-      id: req.id,
-      type: 'http',
-      name: req.name,
-      method: req.method as HttpRequest['method'],
-      url: req.url,
-      headers: req.headers as KeyValue[],
-      params: req.params as KeyValue[],
-      body: req.body ? { type: req.body.type as 'json' | 'text' | 'form' | 'none', content: req.body.content } : { type: 'none', content: '' },
-    })),
-    folders: imported.folders.map(convertImportedCollection),
-  }
+interface OpenApiFileMetadata {
+  modified_at: number
 }
 
 interface ImportModalProps {
@@ -44,14 +19,29 @@ interface ImportModalProps {
 }
 
 export function ImportModal({ onClose }: ImportModalProps) {
-  const [mode, setMode] = useState<'url' | 'paste'>('url')
+  const [mode, setMode] = useState<'file' | 'url' | 'paste'>('file')
   const [url, setUrl] = useState('')
+  const [filePath, setFilePath] = useState('')
   const [specContent, setSpecContent] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
   const { importCollection } = useCollectionStore()
+
+  const handleChooseFile = async () => {
+    setError(null)
+
+    try {
+      const result = await invoke<PickedOpenApiFile>('pick_openapi_file')
+      setFilePath(result.path)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (message !== 'No file selected') {
+        setError(message)
+      }
+    }
+  }
 
   const handleImport = async () => {
     setIsLoading(true)
@@ -61,7 +51,12 @@ export function ImportModal({ onClose }: ImportModalProps) {
     try {
       let result: ImportedCollection
 
-      if (mode === 'url') {
+      if (mode === 'file') {
+        if (!filePath.trim()) {
+          throw new Error('Please choose a local spec file')
+        }
+        result = await invoke<ImportedCollection>('parse_openapi_file', { filePath: filePath.trim() })
+      } else if (mode === 'url') {
         if (!url.trim()) {
           throw new Error('Please enter a URL')
         }
@@ -74,15 +69,27 @@ export function ImportModal({ onClose }: ImportModalProps) {
       }
 
       const collection = convertImportedCollection(result)
+      const fileMetadata = mode === 'file'
+        ? await invoke<OpenApiFileMetadata>('get_openapi_file_metadata', {
+            filePath: filePath.trim(),
+          })
+        : null
 
       // Store the source info for refresh/edit later
-      const source: OpenApiSource = mode === 'url'
-        ? { type: 'url', url: url.trim() }
-        : { type: 'text', spec: specContent.trim() }
+      const source: OpenApiSource =
+        mode === 'file'
+          ? {
+              type: 'file',
+              path: filePath.trim(),
+              sourceModifiedAt: fileMetadata?.modified_at,
+            }
+          : mode === 'url'
+            ? { type: 'url', url: url.trim() }
+            : { type: 'text', spec: specContent.trim() }
 
       importCollection(collection, source)
 
-      const requestCount = countRequests(result)
+      const requestCount = countImportedRequests(result)
       setSuccess(`Imported "${result.name}" with ${requestCount} requests`)
 
       setTimeout(() => {
@@ -93,10 +100,6 @@ export function ImportModal({ onClose }: ImportModalProps) {
     } finally {
       setIsLoading(false)
     }
-  }
-
-  const countRequests = (col: ImportedCollection): number => {
-    return col.requests.length + col.folders.reduce((sum, f) => sum + countRequests(f), 0)
   }
 
   return (
@@ -124,6 +127,13 @@ export function ImportModal({ onClose }: ImportModalProps) {
         <div className="px-4 py-3 border-b border-border">
           <div className="segmented-control">
             <button
+              onClick={() => setMode('file')}
+              className={mode === 'file' ? 'active' : ''}
+            >
+              <FolderOpen className="w-3.5 h-3.5 mr-1.5 inline" />
+              Local File
+            </button>
+            <button
               onClick={() => setMode('url')}
               className={mode === 'url' ? 'active' : ''}
             >
@@ -142,7 +152,29 @@ export function ImportModal({ onClose }: ImportModalProps) {
 
         {/* Content */}
         <div className="p-4 flex-1">
-          {mode === 'url' ? (
+          {mode === 'file' ? (
+            <div>
+              <label className="block text-[12px] text-text-secondary mb-2">
+                Local OpenAPI/Swagger Spec
+              </label>
+              <button
+                onClick={handleChooseFile}
+                className="btn-secondary flex items-center gap-2"
+                type="button"
+              >
+                <FolderOpen className="w-4 h-4" />
+                {filePath ? 'Choose Different File' : 'Choose File'}
+              </button>
+              {filePath && (
+                <div className="mt-3 rounded border border-border bg-bg-tertiary px-3 py-2 font-mono text-[12px] text-text-secondary break-all">
+                  {filePath}
+                </div>
+              )}
+              <p className="text-[11px] text-text-muted mt-2">
+                Best for Git-managed specs in your local repository. You can refresh the collection from this file later.
+              </p>
+            </div>
+          ) : mode === 'url' ? (
             <div>
               <label className="block text-[12px] text-text-secondary mb-2">
                 OpenAPI/Swagger Spec URL
@@ -200,7 +232,12 @@ export function ImportModal({ onClose }: ImportModalProps) {
           </button>
           <button
             onClick={handleImport}
-            disabled={isLoading || (mode === 'url' && !url.trim()) || (mode === 'paste' && !specContent.trim())}
+            disabled={
+              isLoading ||
+              (mode === 'file' && !filePath.trim()) ||
+              (mode === 'url' && !url.trim()) ||
+              (mode === 'paste' && !specContent.trim())
+            }
             className="btn-primary flex items-center gap-2 disabled:opacity-50"
           >
             {isLoading ? (

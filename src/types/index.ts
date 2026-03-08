@@ -93,10 +93,12 @@ export interface WebSocketMessage {
 
 // OpenAPI source info for collections
 export interface OpenApiSource {
-  type: 'url' | 'text'
+  type: 'url' | 'text' | 'file'
   url?: string
   spec?: string
+  path?: string
   lastUpdated?: number
+  sourceModifiedAt?: number
 }
 
 // Collection

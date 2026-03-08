@@ -1,9 +1,21 @@
 import { useEffect } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import { Sidebar } from '../Sidebar/Sidebar'
 import { RequestPanel } from '../RequestPanel/RequestPanel'
 import { CommandPalette } from '../CommandPalette/CommandPalette'
 import { useUIStore } from '../../stores/uiStore'
 import { useRequestStore } from '../../stores/requestStore'
+import { useCollectionStore } from '../../stores/collectionStore'
+import { convertImportedCollectionContents, type ImportedCollection } from '../../lib/openapiImport'
+import type { Collection } from '../../types'
+
+interface OpenApiFileMetadata {
+  modified_at: number
+}
+
+function flattenCollections(collections: Collection[]): Collection[] {
+  return collections.flatMap((collection) => [collection, ...flattenCollections(collection.folders)])
+}
 
 export function Layout() {
   const { isCommandPaletteOpen, openCommandPalette, closeCommandPalette, isSidebarCollapsed } = useUIStore()
@@ -33,6 +45,70 @@ export function Layout() {
     if (tabs.length === 0) {
       addTab()
     }
+  }, [])
+
+  useEffect(() => {
+    let isPolling = false
+
+    const pollFileBackedSpecs = async () => {
+      if (isPolling) return
+      isPolling = true
+
+      try {
+        const { collections, refreshCollectionFromSource, updateCollection } = useCollectionStore.getState()
+        const fileBackedCollections = flattenCollections(collections).filter(
+          (collection) => collection.openApiSource?.type === 'file' && collection.openApiSource.path
+        )
+
+        for (const collection of fileBackedCollections) {
+          const source = collection.openApiSource
+          if (!source?.path) continue
+
+          try {
+            const metadata = await invoke<OpenApiFileMetadata>('get_openapi_file_metadata', {
+              filePath: source.path,
+            })
+
+            if (!source.sourceModifiedAt) {
+              updateCollection(collection.id, {
+                openApiSource: {
+                  ...source,
+                  sourceModifiedAt: metadata.modified_at,
+                },
+              })
+
+              if (source.lastUpdated && metadata.modified_at <= source.lastUpdated) {
+                continue
+              }
+            }
+
+            if (source.sourceModifiedAt && metadata.modified_at <= source.sourceModifiedAt) {
+              continue
+            }
+
+            const result = await invoke<ImportedCollection>('parse_openapi_file', {
+              filePath: source.path,
+            })
+            const { requests, folders } = convertImportedCollectionContents(result)
+
+            refreshCollectionFromSource(collection.id, requests, folders, {
+              sourceModifiedAt: metadata.modified_at,
+            })
+          } catch (error) {
+            console.error('Failed to auto-refresh OpenAPI file source', error)
+          }
+        }
+      } finally {
+        isPolling = false
+      }
+    }
+
+    void pollFileBackedSpecs()
+    const intervalId = window.setInterval(() => {
+      void pollFileBackedSpecs()
+    }, 5000)
+
+    return () => window.clearInterval(intervalId)
   }, [])
 
   return (

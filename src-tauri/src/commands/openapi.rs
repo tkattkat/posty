@@ -2,6 +2,8 @@ use openapiv3::{OpenAPI, Schema, SchemaKind, Type};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::fs;
+use std::time::UNIX_EPOCH;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ImportedCollection {
@@ -36,6 +38,16 @@ pub struct KeyValue {
 pub struct RequestBody {
     pub r#type: String,
     pub content: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PickedOpenApiFile {
+    pub path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OpenApiFileMetadata {
+    pub modified_at: u64,
 }
 
 /// Generate example JSON body from schema
@@ -328,6 +340,43 @@ pub async fn fetch_and_parse_openapi(url: String) -> Result<ImportedCollection, 
     let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
     let content = response.text().await.map_err(|e| e.to_string())?;
     parse_openapi_spec(content)
+}
+
+#[tauri::command]
+pub fn pick_openapi_file() -> Result<PickedOpenApiFile, String> {
+    let file = rfd::FileDialog::new()
+        .add_filter("OpenAPI", &["json", "yaml", "yml"])
+        .pick_file()
+        .ok_or_else(|| "No file selected".to_string())?;
+
+    Ok(PickedOpenApiFile {
+        path: file.display().to_string(),
+    })
+}
+
+#[tauri::command]
+pub fn parse_openapi_file(file_path: String) -> Result<ImportedCollection, String> {
+    let content = fs::read_to_string(&file_path)
+        .map_err(|e| format!("Failed to read spec file '{}': {}", file_path, e))?;
+
+    parse_openapi_spec(content)
+}
+
+#[tauri::command]
+pub fn get_openapi_file_metadata(file_path: String) -> Result<OpenApiFileMetadata, String> {
+    let metadata = fs::metadata(&file_path)
+        .map_err(|e| format!("Failed to read metadata for '{}': {}", file_path, e))?;
+
+    let modified = metadata
+        .modified()
+        .map_err(|e| format!("Failed to read modified time for '{}': {}", file_path, e))?;
+
+    let modified_at = modified
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("Invalid modified time for '{}': {}", file_path, e))?
+        .as_millis() as u64;
+
+    Ok(OpenApiFileMetadata { modified_at })
 }
 
 #[cfg(test)]

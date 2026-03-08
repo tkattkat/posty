@@ -15,7 +15,12 @@ interface CollectionStore {
   deleteCollection: (id: string) => void
   addRequestToCollection: (collectionId: string, request: Request) => void
   removeRequestFromCollection: (collectionId: string, requestId: string) => void
-  refreshCollectionFromSource: (id: string, newRequests: Request[], newFolders: Collection[]) => void
+  refreshCollectionFromSource: (
+    id: string,
+    newRequests: Request[],
+    newFolders: Collection[],
+    sourceUpdates?: Partial<OpenApiSource>
+  ) => void
 
   // Environment actions
   addEnvironment: (name: string) => void
@@ -120,7 +125,7 @@ export const useCollectionStore = create<CollectionStore>()(
     })
   },
 
-  refreshCollectionFromSource: (id, newRequests, newFolders) => {
+  refreshCollectionFromSource: (id, newRequests, newFolders, sourceUpdates) => {
     set((state) => {
       const updateCollections = (cols: Collection[]): Collection[] =>
         cols.map((col) =>
@@ -130,7 +135,7 @@ export const useCollectionStore = create<CollectionStore>()(
                 requests: newRequests,
                 folders: newFolders,
                 openApiSource: col.openApiSource
-                  ? { ...col.openApiSource, lastUpdated: Date.now() }
+                  ? { ...col.openApiSource, ...sourceUpdates, lastUpdated: Date.now() }
                   : undefined,
               }
             : { ...col, folders: updateCollections(col.folders) }
