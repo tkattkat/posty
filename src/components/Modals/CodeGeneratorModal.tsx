@@ -1,4 +1,14 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import Prism from 'prismjs'
+import 'prismjs/components/prism-bash'
+import 'prismjs/components/prism-clike'
+import 'prismjs/components/prism-go'
+import 'prismjs/components/prism-javascript'
+import 'prismjs/components/prism-markup-templating'
+import 'prismjs/components/prism-php'
+import 'prismjs/components/prism-python'
+import 'prismjs/components/prism-rust'
+import 'prismjs/themes/prism-tomorrow.css'
 import { X, Copy, Check } from 'lucide-react'
 import { generateCode, languageLabels, type CodeLanguage } from '../../lib/codegen'
 import type { HttpRequest } from '../../types'
@@ -10,11 +20,25 @@ interface CodeGeneratorModalProps {
 
 const languages: CodeLanguage[] = ['curl', 'javascript', 'python', 'go', 'rust', 'php']
 
+const prismLanguageMap: Record<CodeLanguage, string> = {
+  curl: 'bash',
+  javascript: 'javascript',
+  python: 'python',
+  go: 'go',
+  rust: 'rust',
+  php: 'php',
+}
+
 export function CodeGeneratorModal({ request, onClose }: CodeGeneratorModalProps) {
   const [selectedLanguage, setSelectedLanguage] = useState<CodeLanguage>('curl')
   const [copied, setCopied] = useState(false)
 
   const code = generateCode({ request, language: selectedLanguage })
+  const prismLanguage = prismLanguageMap[selectedLanguage]
+  const highlightedCode = useMemo(() => {
+    const grammar = Prism.languages[prismLanguage] ?? Prism.languages.javascript
+    return Prism.highlight(code, grammar, prismLanguage)
+  }, [code, prismLanguage])
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(code)
@@ -57,13 +81,18 @@ export function CodeGeneratorModal({ request, onClose }: CodeGeneratorModalProps
 
         {/* Code Display */}
         <div className="relative">
-          <pre className="p-4 h-96 overflow-auto bg-bg-tertiary font-mono text-sm whitespace-pre-wrap">
-            {code}
+          <pre
+            className={`codegen-highlight language-${prismLanguage} h-96 overflow-auto bg-bg-tertiary p-4 text-sm leading-6 whitespace-pre-wrap break-words`}
+          >
+            <code
+              className={`language-${prismLanguage}`}
+              dangerouslySetInnerHTML={{ __html: highlightedCode }}
+            />
           </pre>
 
           <button
             onClick={handleCopy}
-            className="absolute top-2 right-2 p-2 bg-bg-secondary border border-border rounded hover:bg-bg-primary"
+            className="absolute top-2 right-2 z-10 p-2 bg-bg-secondary border border-border rounded hover:bg-bg-primary"
             title="Copy to clipboard"
           >
             {copied ? (

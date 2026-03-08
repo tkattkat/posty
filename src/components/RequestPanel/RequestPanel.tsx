@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
-import { X, Plus, Send, Loader2, Code, ChevronDown, Copy, Check } from 'lucide-react'
+import { X, Plus, Send, Loader2, Code, ChevronDown } from 'lucide-react'
 import { useRequestStore } from '../../stores/requestStore'
 import { useCollectionStore } from '../../stores/collectionStore'
 import { isCurlCommand, curlToHttpRequest } from '../../lib/curlParser'
 import { ResponsePanel } from '../ResponsePanel/ResponsePanel'
-import { generateCode, languageLabels, type CodeLanguage } from '../../lib/codegen'
-import type { HttpMethod, HttpRequest, KeyValue } from '../../types'
+import { CodeGeneratorModal } from '../Modals/CodeGeneratorModal'
+import type { HttpMethod, KeyValue } from '../../types'
 import { invoke } from '@tauri-apps/api/core'
 
 const methods: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD']
@@ -18,75 +18,6 @@ const methodColors: Record<HttpMethod, string> = {
   DELETE: '#EF4444',
   OPTIONS: '#6B7280',
   HEAD: '#06B6D4',
-}
-
-function CodeGenModal({ request, onClose }: { request: HttpRequest; onClose: () => void }) {
-  const [language, setLanguage] = useState<CodeLanguage>('curl')
-  const [copied, setCopied] = useState(false)
-  const code = generateCode({ request, language })
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(code)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  const languages: CodeLanguage[] = ['curl', 'javascript', 'python', 'go', 'rust', 'php']
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div
-        className="relative w-full max-w-2xl max-h-[80vh] glass-elevated rounded-lg flex flex-col animate-scale-in"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <div className="flex items-center gap-2">
-            <Code className="w-4 h-4 text-text-secondary" />
-            <span className="text-[14px] font-medium">Generate Code</span>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 hover:bg-bg-hover rounded transition-colors text-text-muted hover:text-text-secondary"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Language Tabs */}
-        <div className="flex gap-1 px-4 py-2 border-b border-border overflow-x-auto">
-          {languages.map((lang) => (
-            <button
-              key={lang}
-              onClick={() => setLanguage(lang)}
-              className={`tab whitespace-nowrap ${language === lang ? 'tab-active' : ''}`}
-            >
-              {languageLabels[lang]}
-            </button>
-          ))}
-        </div>
-
-        {/* Code */}
-        <div className="flex-1 overflow-auto p-4 bg-bg-primary">
-          <pre className="font-mono text-[13px] text-text-secondary whitespace-pre-wrap break-all leading-relaxed">
-            {code}
-          </pre>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
-          <button onClick={onClose} className="btn-secondary">
-            Close
-          </button>
-          <button onClick={handleCopy} className="btn-primary flex items-center gap-2">
-            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-            {copied ? 'Copied' : 'Copy'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
 }
 
 function KeyValueEditor({
@@ -547,7 +478,7 @@ export function RequestPanel() {
 
       {/* Code Generation Modal */}
       {showCodeGen && httpRequest && (
-        <CodeGenModal request={httpRequest} onClose={() => setShowCodeGen(false)} />
+        <CodeGeneratorModal request={httpRequest} onClose={() => setShowCodeGen(false)} />
       )}
     </div>
   )
