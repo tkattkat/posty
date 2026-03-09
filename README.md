@@ -31,6 +31,7 @@ Posty is a native desktop app built with Tauri and Rust. It starts instantly, us
 - Request testing with assertions and variable extraction
 - Light, Dark, and System themes
 - Command palette (Cmd+K)
+- Auto-updates
 
 ## Install
 
