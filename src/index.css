@@ -295,16 +295,44 @@ body {
 
 .request-split-shell {
   --request-pane-width: 50%;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .request-pane {
   width: var(--request-pane-width);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
   border-right: 1px solid var(--border);
+  overflow: hidden;
 }
 
 .response-pane {
-  min-width: 0;
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.request-subtabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.request-content {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
 }
 
 body.is-resizing {
@@ -632,6 +660,8 @@ body.is-resizing {
   transition: all 0.15s ease;
   border: none;
   background: transparent;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .tab:hover {
@@ -725,35 +755,32 @@ body.is-resizing {
   border-color: rgba(255, 255, 255, 0.1);
 }
 
-/* Send button */
+/* Send button - Clerk style */
 .send-button {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-width: 92px;
-  height: 44px;
-  padding: 0 16px;
-  background: var(--accent);
-  color: white;
-  font-weight: 600;
+  gap: 5px;
+  height: 32px;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 500;
   font-size: 13px;
-  letter-spacing: -0.01em;
-  border: 1px solid transparent;
-  border-radius: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
   cursor: pointer;
-  transition: all 0.15s ease;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  transition: all 0.12s ease;
 }
 
 .send-button:hover {
-  background: var(--accent-light);
-  box-shadow: 0 3px 10px var(--accent-subtle);
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
 }
 
 .send-button:active {
-  transform: scale(0.98);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  background: var(--bg-tertiary);
 }
 
 /* Tab bar */

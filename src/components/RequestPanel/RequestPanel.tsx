@@ -437,7 +437,7 @@ export function RequestPanel() {
 
       {/* URL Bar */}
       <div className="px-4 py-3 flex-shrink-0 border-b border-border">
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           {httpRequest && (
             <div className="relative">
               <button
@@ -487,18 +487,18 @@ export function RequestPanel() {
           <div className="relative flex items-center">
             <button
               onClick={() => setShowEnvDropdown(!showEnvDropdown)}
-              className={`h-[44px] flex items-center gap-1.5 px-3 rounded-lg text-[12px] font-medium transition-colors ${
+              className={`h-[32px] flex items-center gap-1.5 px-2.5 rounded-md text-[13px] font-medium border transition-all duration-100 ${
                 activeEnvironment
-                  ? 'bg-green-500/10 text-green-500 hover:bg-green-500/20'
-                  : 'bg-bg-secondary hover:bg-bg-tertiary text-text-muted'
+                  ? 'bg-transparent text-green-500 border-green-500/30 hover:border-green-500/50'
+                  : 'bg-transparent border-border text-text-secondary hover:border-border-hover hover:text-text-primary'
               }`}
               title={activeEnvironment ? `Environment: ${activeEnvironment.name}` : 'No environment'}
             >
-              <Globe className="w-4 h-4 flex-shrink-0" />
-              <span className="max-w-[70px] truncate">
-                {activeEnvironment?.name || 'No Env'}
+              <Globe className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="max-w-[60px] truncate">
+                {activeEnvironment?.name || 'Env'}
               </span>
-              <ChevronDown className="w-3 h-3 flex-shrink-0 opacity-60" />
+              <ChevronDown className="w-3 h-3 flex-shrink-0 opacity-50" />
             </button>
             {showEnvDropdown && (
               <div className="absolute top-full right-0 mt-1 py-1 bg-surface-raised border border-border rounded-lg shadow-lg z-50 min-w-[180px] animate-fade-in">
@@ -565,11 +565,11 @@ export function RequestPanel() {
       </div>
 
       {/* Split View: Request Config + Response */}
-      <div ref={requestSplitRef} className="request-split-shell flex-1 flex min-h-0">
+      <div ref={requestSplitRef} className="request-split-shell">
         {/* Request Config */}
-        <div className="request-pane flex flex-col min-h-0">
+        <div className="request-pane">
           {/* Sub Tabs */}
-          <div className="flex gap-1 px-4 py-2 border-b border-border flex-shrink-0">
+          <div className="request-subtabs">
             {(['params', 'headers', 'cookies', 'body', 'auth', 'tests'] as const).map((tab) => (
               <button
                 key={tab}
@@ -602,7 +602,7 @@ export function RequestPanel() {
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-auto p-4">
+          <div className="request-content">
             {httpRequest && activeSubTab === 'params' && (
               <KeyValueEditor
                 items={httpRequest.params}
@@ -746,7 +746,7 @@ export function RequestPanel() {
         />
 
         {/* Response Panel */}
-        <div className="response-pane min-h-0">
+        <div className="response-pane">
           <ResponsePanel />
         </div>
       </div>
