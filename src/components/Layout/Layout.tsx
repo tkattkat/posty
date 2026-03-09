@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { Sidebar } from '../Sidebar/Sidebar'
 import { RequestPanel } from '../RequestPanel/RequestPanel'
 import { CommandPalette } from '../CommandPalette/CommandPalette'
+import { UpdateChecker } from '../UpdateChecker/UpdateChecker'
 import { useUIStore } from '../../stores/uiStore'
 import { useRequestStore } from '../../stores/requestStore'
 import { useCollectionStore } from '../../stores/collectionStore'
@@ -192,6 +193,9 @@ export function Layout() {
 
       {/* Command Palette */}
       {isCommandPaletteOpen && <CommandPalette />}
+
+      {/* Update Checker */}
+      <UpdateChecker />
     </div>
   )
 }

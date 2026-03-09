@@ -9,6 +9,8 @@ pub fn run() {
     tauri::Builder::default()
         .manage(Arc::new(Mutex::new(WebSocketState::default())))
         .plugin(tauri_plugin_log::Builder::default().build())
+        .plugin(tauri_plugin_updater::Builder::default().build())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             // HTTP
             commands::http::send_http_request,

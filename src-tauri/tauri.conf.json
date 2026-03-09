@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "posty",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "identifier": "com.tkattkat.posty",
   "build": {
     "frontendDist": "../dist",
@@ -39,6 +39,15 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/tkattkat/posty/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEREMTFDMEExNUU2MjlFOTgKUldTWW5tSmVvY0FSM1hINTFlTGp1VVFFaEN0KzZDVjFyNUhBRkl0Tmt5ZGZaMDJiVzJraGhoZlEK"
+    }
   }
 }
