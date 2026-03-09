@@ -44,6 +44,7 @@ interface RequestStore {
   updateActiveRequest: (updates: Partial<Request>) => void
   getResponse: () => HttpResponse | null
   getExecutionResult: () => RequestExecutionResult | null
+  duplicateActiveTab: () => void
 }
 
 export const useRequestStore = create<RequestStore>()(
@@ -163,6 +164,22 @@ export const useRequestStore = create<RequestStore>()(
       getExecutionResult: () => {
         const { activeTabId, tabExecutionResults } = get()
         return activeTabId ? tabExecutionResults[activeTabId] ?? null : null
+      },
+
+      duplicateActiveTab: () => {
+        const { tabs, activeTabId, addTab } = get()
+        const activeTab = tabs.find((tab) => tab.id === activeTabId)
+        if (activeTab) {
+          const duplicatedRequest = {
+            ...activeTab.request,
+            id: crypto.randomUUID(),
+            name: `${activeTab.request.name} (copy)`,
+          }
+          addTab(duplicatedRequest, {
+            collectionId: activeTab.sourceCollectionId,
+            requestId: activeTab.sourceRequestId,
+          })
+        }
       },
     }),
     {

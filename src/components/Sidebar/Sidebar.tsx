@@ -1728,10 +1728,11 @@ export function Sidebar() {
       <div className="p-3 border-t border-border">
         <div className="flex items-center justify-between">
           <div className="flex gap-1.5 flex-wrap">
-            <span className="kbd">⌘K</span>
-            <span className="kbd">⌘T</span>
-            <span className="kbd">⌘W</span>
-            <span className="kbd">⌘S</span>
+            <span className="kbd" title="Command palette">⌘K</span>
+            <span className="kbd" title="New tab">⌘T</span>
+            <span className="kbd" title="Duplicate tab">⌘D</span>
+            <span className="kbd" title="Close tab">⌘W</span>
+            <span className="kbd" title="Toggle sidebar">⌘S</span>
           </div>
           <button
             onClick={cycleTheme}
