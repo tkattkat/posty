@@ -429,6 +429,127 @@ function RequestContextMenu({
   )
 }
 
+function EnvironmentsPanel({
+  onEditEnvironment,
+}: {
+  onEditEnvironment: (envId: string | null) => void
+}) {
+  const { environments, activeEnvironmentId, setActiveEnvironment, addEnvironment, deleteEnvironment } = useCollectionStore()
+  const [isCreating, setIsCreating] = useState(false)
+  const [newEnvName, setNewEnvName] = useState('')
+
+  const handleCreate = () => {
+    if (newEnvName.trim()) {
+      addEnvironment(newEnvName.trim())
+      setNewEnvName('')
+      setIsCreating(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Add Environment */}
+      <div className="px-2 pb-2">
+        {isCreating ? (
+          <div className="p-3 bg-bg-secondary rounded border border-border animate-fade-in">
+            <input
+              type="text"
+              value={newEnvName}
+              onChange={(e) => setNewEnvName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleCreate()
+                if (e.key === 'Escape') setIsCreating(false)
+              }}
+              placeholder="Environment name"
+              className="input-field text-[13px] mb-2"
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <button onClick={handleCreate} className="btn-primary flex-1 text-[12px] py-1.5">
+                Create
+              </button>
+              <button onClick={() => setIsCreating(false)} className="btn-secondary flex-1 text-[12px] py-1.5">
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setIsCreating(true)}
+            className="w-full btn-ghost flex items-center justify-center gap-1.5 text-[12px]"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            New Environment
+          </button>
+        )}
+      </div>
+
+      {/* Environments List */}
+      {environments.length === 0 && !isCreating ? (
+        <div className="empty-state">
+          <div className="empty-state-icon">
+            <Globe className="w-5 h-5" />
+          </div>
+          <p className="empty-state-title">No environments</p>
+          <p className="empty-state-desc">Create an environment to manage variables</p>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-auto py-1 space-y-1">
+          {environments.map((env) => {
+            const isActive = env.id === activeEnvironmentId
+            return (
+              <div
+                key={env.id}
+                className={`group flex items-center gap-2 px-3 py-2 rounded cursor-pointer transition-colors ${
+                  isActive ? 'bg-accent/12 ring-1 ring-accent/20' : 'hover:bg-bg-hover'
+                }`}
+                onClick={() => setActiveEnvironment(isActive ? null : env.id)}
+              >
+                <div
+                  className={`w-2 h-2 rounded-full transition-colors ${
+                    isActive ? 'bg-green-500' : 'bg-text-muted'
+                  }`}
+                />
+                <span className="flex-1 text-[13px] text-text-secondary group-hover:text-text-primary truncate">
+                  {env.name}
+                </span>
+                {env.baseUrl && (
+                  <span className="text-[10px] text-text-muted truncate max-w-[80px]" title={env.baseUrl}>
+                    {env.baseUrl.replace(/^https?:\/\//, '').split('/')[0]}
+                  </span>
+                )}
+                <span className="text-[10px] text-text-muted">
+                  {env.variables.length} vars
+                </span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onEditEnvironment(env.id)
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-tertiary rounded transition-all"
+                >
+                  <Pencil className="w-3 h-3 text-text-muted" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (confirm(`Delete environment "${env.name}"?`)) {
+                      deleteEnvironment(env.id)
+                    }
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-error/10 rounded transition-all"
+                >
+                  <Trash2 className="w-3 h-3 text-error" />
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function HistoryPanel({
   onCompare,
   activeSourceRequestId,
@@ -740,6 +861,190 @@ function CollectionSecretsModal({
   )
 }
 
+function EnvironmentModal({
+  environmentId,
+  onClose,
+}: {
+  environmentId: string
+  onClose: () => void
+}) {
+  const { environments, updateEnvironment } = useCollectionStore()
+  const environment = environments.find((env) => env.id === environmentId)
+
+  const [name, setName] = useState(environment?.name ?? '')
+  const [baseUrl, setBaseUrl] = useState(environment?.baseUrl ?? '')
+  const [variables, setVariables] = useState<Array<{ id: string; key: string; value: string; enabled: boolean }>>(
+    environment?.variables?.length
+      ? environment.variables
+      : [{ id: crypto.randomUUID(), key: '', value: '', enabled: true }]
+  )
+  const [error, setError] = useState('')
+
+  if (!environment) {
+    return null
+  }
+
+  const updateVariable = (id: string, field: 'key' | 'value' | 'enabled', value: string | boolean) => {
+    setVariables((current) => current.map((v) => (v.id === id ? { ...v, [field]: value } : v)))
+  }
+
+  const addVariable = () => {
+    setVariables((current) => [...current, { id: crypto.randomUUID(), key: '', value: '', enabled: true }])
+  }
+
+  const removeVariable = (id: string) => {
+    setVariables((current) => current.filter((v) => v.id !== id))
+  }
+
+  const handleSave = () => {
+    const trimmedName = name.trim()
+    if (!trimmedName) {
+      setError('Environment name is required')
+      return
+    }
+
+    const cleanedVariables = variables
+      .map((v) => ({ ...v, key: v.key.trim() }))
+      .filter((v) => v.key)
+
+    const varKeys = cleanedVariables.map((v) => v.key)
+    const hasDuplicateKeys = new Set(varKeys).size !== varKeys.length
+
+    if (hasDuplicateKeys) {
+      setError('Variable keys must be unique')
+      return
+    }
+
+    setError('')
+    updateEnvironment(environmentId, {
+      name: trimmedName,
+      baseUrl: baseUrl.trim() || undefined,
+      variables: cleanedVariables,
+    })
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div
+        className="relative w-full max-w-2xl glass-elevated rounded-lg flex flex-col animate-scale-in max-h-[80vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Globe className="w-4 h-4 text-accent" />
+            <span className="text-[14px] font-medium">Edit Environment</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-bg-hover rounded transition-colors text-text-muted hover:text-text-secondary"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-4 flex-1 overflow-auto">
+          {/* Environment Name */}
+          <div className="mb-4">
+            <label className="block text-[12px] text-text-secondary mb-1.5">Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Development, Staging, Production"
+              className="w-full input-field text-[13px]"
+            />
+          </div>
+
+          {/* Base URL */}
+          <div className="mb-4">
+            <label className="block text-[12px] text-text-secondary mb-1.5">Base URL (optional)</label>
+            <input
+              type="text"
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder="https://api.example.com"
+              className="w-full input-field text-[13px] font-mono"
+            />
+            <p className="mt-1 text-[11px] text-text-muted">
+              Overrides collection base URL when this environment is active
+            </p>
+          </div>
+
+          {/* Variables */}
+          <div>
+            <label className="block text-[12px] text-text-secondary mb-1.5">Variables</label>
+            <p className="text-[11px] text-text-muted mb-3">
+              Use <code className="px-1 py-0.5 bg-bg-tertiary rounded text-accent">{'{{variableName}}'}</code> in URLs, headers, or body
+            </p>
+
+            <div className="space-y-2">
+              {variables.map((variable) => (
+                <div key={variable.id} className="flex items-center gap-2">
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={variable.enabled}
+                      onChange={(e) => updateVariable(variable.id, 'enabled', e.target.checked)}
+                      className="w-4 h-4 rounded border-border bg-black/20 accent-accent"
+                    />
+                  </label>
+                  <input
+                    type="text"
+                    value={variable.key}
+                    onChange={(e) => updateVariable(variable.id, 'key', e.target.value)}
+                    placeholder="variableName"
+                    className="min-w-0 flex-1 input-field font-mono text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={variable.value}
+                    onChange={(e) => updateVariable(variable.id, 'value', e.target.value)}
+                    placeholder="value"
+                    className="min-w-0 flex-1 input-field text-sm"
+                  />
+                  <button
+                    onClick={() => removeVariable(variable.id)}
+                    className="p-2 text-text-tertiary hover:text-error hover:bg-error/10 rounded-md transition-all"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={addVariable}
+              className="mt-3 flex items-center gap-1.5 text-xs text-text-secondary hover:text-accent transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add variable
+            </button>
+          </div>
+
+          {error && (
+            <div className="mt-4 p-2 bg-error/10 text-error text-[12px] rounded flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" />
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
+          <button onClick={onClose} className="btn-secondary">
+            Cancel
+          </button>
+          <button onClick={handleSave} className="btn-primary flex items-center gap-2">
+            <Save className="w-4 h-4" />
+            Save Environment
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function RenameModal({
   title,
   currentName,
@@ -981,6 +1286,7 @@ export function Sidebar() {
   const [contextMenu, setContextMenu] = useState<{ collection: Collection; x: number; y: number } | null>(null)
   const [requestContextMenu, setRequestContextMenu] = useState<{ request: HttpRequest; collectionId: string; x: number; y: number } | null>(null)
   const [runnerCollection, setRunnerCollection] = useState<Collection | null>(null)
+  const [editingEnvironmentId, setEditingEnvironmentId] = useState<string | null>(null)
   const suppressNextCollectionToggleRef = useRef(false)
 
   const cycleTheme = () => {
@@ -1157,6 +1463,12 @@ export function Sidebar() {
             Collections
           </button>
           <button
+            onClick={() => setActivePanel('environments')}
+            className={activePanel === 'environments' ? 'active' : ''}
+          >
+            Envs
+          </button>
+          <button
             onClick={() => setActivePanel('history')}
             className={activePanel === 'history' ? 'active' : ''}
           >
@@ -1252,6 +1564,12 @@ export function Sidebar() {
               </div>
             )}
           </div>
+        )}
+
+        {activePanel === 'environments' && (
+          <EnvironmentsPanel
+            onEditEnvironment={setEditingEnvironmentId}
+          />
         )}
 
         {activePanel === 'history' && (
@@ -1375,6 +1693,13 @@ export function Sidebar() {
         <CollectionRunnerModal
           collection={runnerCollection}
           onClose={() => setRunnerCollection(null)}
+        />
+      )}
+
+      {editingEnvironmentId && (
+        <EnvironmentModal
+          environmentId={editingEnvironmentId}
+          onClose={() => setEditingEnvironmentId(null)}
         />
       )}
 

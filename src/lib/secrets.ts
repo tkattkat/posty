@@ -35,9 +35,15 @@ export function resolveSecretReference(
 export function resolveTemplateReferences(
   value: string,
   secrets: SecretVariable[],
-  runtimeVariables: RuntimeVariableMap = {}
+  runtimeVariables: RuntimeVariableMap = {},
+  envVariables: Record<string, string> = {}
 ): string {
   return value.replace(TEMPLATE_REFERENCE_REGEX, (match, referenceName: string) => {
+    // Priority: envVariables > runtimeVariables > secrets
+    if (referenceName in envVariables) {
+      return envVariables[referenceName]
+    }
+
     if (referenceName in runtimeVariables) {
       return runtimeVariables[referenceName]
     }

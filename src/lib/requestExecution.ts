@@ -24,6 +24,7 @@ export interface ExecutionContext {
   secrets?: SecretVariable[]
   runtimeVariables?: RuntimeVariableMap
   baseUrl?: string
+  envVariables?: Record<string, string>
 }
 
 export function getEnabledItems(items: KeyValue[]): KeyValue[] {
@@ -63,12 +64,13 @@ function resolveRequestUrl(url: string, baseUrl: string): string {
 function resolveKeyValueItems(
   items: KeyValue[],
   secrets: SecretVariable[],
-  runtimeVariables: RuntimeVariableMap
+  runtimeVariables: RuntimeVariableMap,
+  envVariables: Record<string, string> = {}
 ): KeyValue[] {
   return items.map((item) => ({
     ...item,
-    key: resolveTemplateReferences(item.key, secrets, runtimeVariables),
-    value: resolveTemplateReferences(item.value, secrets, runtimeVariables),
+    key: resolveTemplateReferences(item.key, secrets, runtimeVariables, envVariables),
+    value: resolveTemplateReferences(item.value, secrets, runtimeVariables, envVariables),
   }))
 }
 
@@ -99,28 +101,29 @@ export function resolveHttpRequest(
 ): HttpRequest {
   const secrets = context.secrets ?? []
   const runtimeVariables = context.runtimeVariables ?? {}
+  const envVariables = context.envVariables ?? {}
   const baseUrl = context.baseUrl ?? ''
 
-  const resolvedHeaders = resolveKeyValueItems(request.headers, secrets, runtimeVariables)
-  const resolvedParams = resolveKeyValueItems(request.params, secrets, runtimeVariables)
-  const resolvedCookies = resolveKeyValueItems(request.cookies ?? [], secrets, runtimeVariables)
+  const resolvedHeaders = resolveKeyValueItems(request.headers, secrets, runtimeVariables, envVariables)
+  const resolvedParams = resolveKeyValueItems(request.params, secrets, runtimeVariables, envVariables)
+  const resolvedCookies = resolveKeyValueItems(request.cookies ?? [], secrets, runtimeVariables, envVariables)
   const resolvedAuth = request.auth
     ? {
         ...request.auth,
         token: request.auth.token
-          ? resolveTemplateReferences(request.auth.token, secrets, runtimeVariables)
+          ? resolveTemplateReferences(request.auth.token, secrets, runtimeVariables, envVariables)
           : request.auth.token,
         username: request.auth.username
-          ? resolveTemplateReferences(request.auth.username, secrets, runtimeVariables)
+          ? resolveTemplateReferences(request.auth.username, secrets, runtimeVariables, envVariables)
           : request.auth.username,
         password: request.auth.password
-          ? resolveTemplateReferences(request.auth.password, secrets, runtimeVariables)
+          ? resolveTemplateReferences(request.auth.password, secrets, runtimeVariables, envVariables)
           : request.auth.password,
         key: request.auth.key
-          ? resolveTemplateReferences(request.auth.key, secrets, runtimeVariables)
+          ? resolveTemplateReferences(request.auth.key, secrets, runtimeVariables, envVariables)
           : request.auth.key,
         value: request.auth.value
-          ? resolveTemplateReferences(request.auth.value, secrets, runtimeVariables)
+          ? resolveTemplateReferences(request.auth.value, secrets, runtimeVariables, envVariables)
           : request.auth.value,
       }
     : undefined
@@ -165,7 +168,7 @@ export function resolveHttpRequest(
   return {
     ...request,
     url: buildRequestUrl(
-      resolveRequestUrl(resolveTemplateReferences(request.url, secrets, runtimeVariables), resolveTemplateReferences(baseUrl, secrets, runtimeVariables)),
+      resolveRequestUrl(resolveTemplateReferences(request.url, secrets, runtimeVariables, envVariables), resolveTemplateReferences(baseUrl, secrets, runtimeVariables, envVariables)),
       nextParams
     ),
     headers: nextHeaders,
@@ -173,7 +176,7 @@ export function resolveHttpRequest(
     cookies: resolvedCookies,
     body: {
       ...request.body,
-      content: resolveTemplateReferences(request.body.content, secrets, runtimeVariables),
+      content: resolveTemplateReferences(request.body.content, secrets, runtimeVariables, envVariables),
     },
     auth: resolvedAuth,
   }

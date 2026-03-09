@@ -188,6 +188,7 @@ export interface Collection {
 export interface Environment {
   id: string
   name: string
+  baseUrl?: string
   variables: KeyValue[]
   isActive: boolean
 }

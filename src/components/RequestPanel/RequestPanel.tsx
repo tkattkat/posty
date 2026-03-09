@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { X, Plus, Send, Loader2, Code, ChevronDown, Lock } from 'lucide-react'
+import { X, Plus, Send, Loader2, Code, ChevronDown, Lock, Globe } from 'lucide-react'
 import { useRequestStore } from '../../stores/requestStore'
 import { useCollectionStore } from '../../stores/collectionStore'
 import { isCurlCommand, curlToHttpRequest } from '../../lib/curlParser'
@@ -212,9 +212,10 @@ export function RequestPanel() {
     tabExecutionResults,
   } = useRequestStore()
   const executionResult = activeTabId ? tabExecutionResults[activeTabId] ?? null : null
-  const { addToHistory, findCollectionById, findCollectionByRequestId, getEffectiveBaseUrlForCollection, getEffectiveBaseUrlForRequest, updateRequestInCollection } = useCollectionStore()
+  const { addToHistory, findCollectionById, findCollectionByRequestId, getEffectiveBaseUrlForCollection, getEffectiveBaseUrlForRequest, updateRequestInCollection, getActiveEnvironment, environments, setActiveEnvironment, activeEnvironmentId } = useCollectionStore()
   const [activeSubTab, setActiveSubTab] = useState<'params' | 'headers' | 'cookies' | 'body' | 'auth' | 'tests'>('params')
   const [showMethodDropdown, setShowMethodDropdown] = useState(false)
+  const [showEnvDropdown, setShowEnvDropdown] = useState(false)
   const [showCodeGen, setShowCodeGen] = useState(false)
   const requestSplitRef = useRef<HTMLDivElement | null>(null)
 
@@ -225,9 +226,24 @@ export function RequestPanel() {
     (activeTab?.sourceCollectionId ? findCollectionById(activeTab.sourceCollectionId) : null) ??
     (activeTab?.sourceRequestId ? findCollectionByRequestId(activeTab.sourceRequestId) : null)
   const activeSecrets = useMemo(() => activeCollection?.secrets ?? [], [activeCollection])
-  const effectiveBaseUrl =
+  const activeEnvironment = getActiveEnvironment()
+
+  // Environment baseUrl takes priority over collection baseUrl
+  const collectionBaseUrl =
     (activeCollection?.id ? getEffectiveBaseUrlForCollection(activeCollection.id) : undefined) ??
     (activeTab?.sourceRequestId ? getEffectiveBaseUrlForRequest(activeTab.sourceRequestId) : undefined)
+  const effectiveBaseUrl = activeEnvironment?.baseUrl || collectionBaseUrl
+
+  // Convert environment variables to Record<string, string>
+  const envVariables = useMemo(() => {
+    if (!activeEnvironment?.variables) return {}
+    return activeEnvironment.variables
+      .filter(v => v.enabled && v.key)
+      .reduce<Record<string, string>>((acc, v) => {
+        acc[v.key] = v.value
+        return acc
+      }, {})
+  }, [activeEnvironment?.variables])
 
   const updateRequestAndSource = useCallback((updates: Partial<Request>) => {
     updateActiveRequest(updates)
@@ -289,6 +305,7 @@ export function RequestPanel() {
       const result = await executeHttpRequest(httpRequest, {
         secrets: activeSecrets,
         baseUrl: effectiveBaseUrl,
+        envVariables,
       })
 
       setResponse(result.response)
@@ -306,7 +323,7 @@ export function RequestPanel() {
     } finally {
       setLoading(false)
     }
-  }, [activeCollection?.id, activeSecrets, activeTab?.sourceRequestId, addToHistory, effectiveBaseUrl, httpRequest, setExecutionResult, setLoading, setResponse])
+  }, [activeCollection?.id, activeSecrets, activeTab?.sourceRequestId, addToHistory, effectiveBaseUrl, envVariables, httpRequest, setExecutionResult, setLoading, setResponse])
 
   // Keyboard shortcut to send
   useEffect(() => {
@@ -465,6 +482,68 @@ export function RequestPanel() {
           >
             <Code className="w-5 h-5" />
           </button>
+
+          {/* Environment Selector */}
+          <div className="relative flex items-center">
+            <button
+              onClick={() => setShowEnvDropdown(!showEnvDropdown)}
+              className={`h-[44px] flex items-center gap-1.5 px-3 rounded-lg text-[12px] font-medium transition-colors ${
+                activeEnvironment
+                  ? 'bg-green-500/10 text-green-500 hover:bg-green-500/20'
+                  : 'bg-bg-secondary hover:bg-bg-tertiary text-text-muted'
+              }`}
+              title={activeEnvironment ? `Environment: ${activeEnvironment.name}` : 'No environment'}
+            >
+              <Globe className="w-4 h-4 flex-shrink-0" />
+              <span className="max-w-[70px] truncate">
+                {activeEnvironment?.name || 'No Env'}
+              </span>
+              <ChevronDown className="w-3 h-3 flex-shrink-0 opacity-60" />
+            </button>
+            {showEnvDropdown && (
+              <div className="absolute top-full right-0 mt-1 py-1 bg-surface-raised border border-border rounded-lg shadow-lg z-50 min-w-[180px] animate-fade-in">
+                <button
+                  onClick={() => {
+                    setActiveEnvironment(null)
+                    setShowEnvDropdown(false)
+                  }}
+                  className={`w-full px-3 py-2 text-left text-[12px] hover:bg-bg-hover transition-colors flex items-center gap-2.5 ${
+                    !activeEnvironmentId ? 'text-accent' : 'text-text-secondary'
+                  }`}
+                >
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${!activeEnvironmentId ? 'bg-accent' : 'bg-text-muted'}`} />
+                  <span>No Environment</span>
+                </button>
+                {environments.length > 0 && <div className="border-t border-border my-1" />}
+                {environments.map((env) => (
+                  <button
+                    key={env.id}
+                    onClick={() => {
+                      setActiveEnvironment(env.id)
+                      setShowEnvDropdown(false)
+                    }}
+                    className={`w-full px-3 py-2 text-left text-[12px] hover:bg-bg-hover transition-colors flex items-center gap-2.5 ${
+                      env.id === activeEnvironmentId ? 'text-green-500' : 'text-text-secondary'
+                    }`}
+                  >
+                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${env.id === activeEnvironmentId ? 'bg-green-500' : 'bg-text-muted'}`} />
+                    <span className="flex-1 truncate">{env.name}</span>
+                    {env.baseUrl && (
+                      <span className="text-[10px] text-text-muted truncate max-w-[60px]">
+                        {env.baseUrl.replace(/^https?:\/\//, '').split('/')[0]}
+                      </span>
+                    )}
+                  </button>
+                ))}
+                {environments.length === 0 && (
+                  <p className="px-3 py-2 text-[11px] text-text-muted">
+                    No environments yet
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
           <button
             onClick={handleSendRequest}
             disabled={isLoading || !httpRequest?.url}
