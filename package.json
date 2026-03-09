@@ -29,7 +29,8 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "mock-api-server": "tsx scripts/mock-api-server.ts",
-    "openapi-server": "npx tsx scripts/openapi-server.ts"
+    "openapi-server": "npx tsx scripts/openapi-server.ts",
+    "release": "./scripts/release.sh"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
