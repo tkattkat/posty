@@ -1,67 +1,69 @@
-import { useEffect, useState } from 'react'
-import { check } from '@tauri-apps/plugin-updater'
-import { relaunch } from '@tauri-apps/plugin-process'
-import { Download, X, RefreshCw } from 'lucide-react'
-
-interface UpdateInfo {
-  version: string
-  body?: string
-}
+import { useEffect } from 'react'
+import { listen } from '@tauri-apps/api/event'
+import { Download, X, RefreshCw, CheckCircle } from 'lucide-react'
+import { useUpdateStore } from '../../stores/updateStore'
 
 export function UpdateChecker() {
-  const [updateAvailable, setUpdateAvailable] = useState<UpdateInfo | null>(null)
-  const [isDownloading, setIsDownloading] = useState(false)
-  const [downloadProgress, setDownloadProgress] = useState(0)
-  const [dismissed, setDismissed] = useState(false)
+  const {
+    updateAvailable,
+    isDownloading,
+    downloadProgress,
+    dismissed,
+    showUpToDate,
+    checkForUpdates,
+    downloadAndInstall,
+    dismiss,
+    dismissUpToDate,
+    reset,
+  } = useUpdateStore()
 
   useEffect(() => {
-    const checkForUpdates = async () => {
-      try {
-        const update = await check()
-        if (update) {
-          setUpdateAvailable({
-            version: update.version,
-            body: update.body,
-          })
-        }
-      } catch (error) {
-        console.error('Failed to check for updates:', error)
-      }
-    }
-
-    // Check for updates on mount
-    checkForUpdates()
+    // Check for updates on mount (not from menu, so no "up to date" message)
+    checkForUpdates(false)
 
     // Check every 30 minutes
-    const interval = setInterval(checkForUpdates, 30 * 60 * 1000)
-    return () => clearInterval(interval)
-  }, [])
+    const interval = setInterval(() => checkForUpdates(false), 30 * 60 * 1000)
 
-  const handleUpdate = async () => {
-    try {
-      setIsDownloading(true)
-      const update = await check()
-      if (!update) return
+    // Listen for menu "Check for Updates" event
+    const unlisten = listen('check-for-updates', () => {
+      // Reset dismissed state and check again (from menu, so show "up to date" if no update)
+      reset()
+      checkForUpdates(true)
+    })
 
-      let totalSize = 0
-      let downloaded = 0
-      await update.downloadAndInstall((event) => {
-        if (event.event === 'Started') {
-          totalSize = (event.data as { contentLength?: number }).contentLength || 0
-        } else if (event.event === 'Progress') {
-          downloaded += (event.data as { chunkLength: number }).chunkLength
-          if (totalSize > 0) {
-            setDownloadProgress((downloaded / totalSize) * 100)
-          }
-        }
-      })
-
-      // Relaunch the app after update
-      await relaunch()
-    } catch (error) {
-      console.error('Failed to install update:', error)
-      setIsDownloading(false)
+    return () => {
+      clearInterval(interval)
+      unlisten.then((fn) => fn())
     }
+  }, [checkForUpdates, reset])
+
+  // Show "You're up to date" notification
+  if (showUpToDate) {
+    return (
+      <div className="fixed bottom-4 right-4 z-50 animate-fade-in">
+        <div className="glass-elevated rounded-lg border border-border shadow-2xl p-4 max-w-sm">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-green-500/10">
+              <CheckCircle className="w-5 h-5 text-green-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-[14px] font-medium text-text-primary">
+                You're up to date
+              </h3>
+              <p className="text-[12px] text-text-secondary mt-0.5">
+                Posty is running the latest version
+              </p>
+            </div>
+            <button
+              onClick={dismissUpToDate}
+              className="p-1 hover:bg-bg-hover rounded transition-colors text-text-muted hover:text-text-secondary"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (!updateAvailable || dismissed) {
@@ -89,7 +91,7 @@ export function UpdateChecker() {
             )}
           </div>
           <button
-            onClick={() => setDismissed(true)}
+            onClick={dismiss}
             className="p-1 hover:bg-bg-hover rounded transition-colors text-text-muted hover:text-text-secondary"
           >
             <X className="w-4 h-4" />
@@ -114,13 +116,13 @@ export function UpdateChecker() {
         ) : (
           <div className="flex gap-2 mt-3">
             <button
-              onClick={() => setDismissed(true)}
+              onClick={dismiss}
               className="btn-secondary flex-1 text-[12px] py-1.5"
             >
               Later
             </button>
             <button
-              onClick={handleUpdate}
+              onClick={downloadAndInstall}
               className="btn-primary flex-1 text-[12px] py-1.5"
             >
               Update Now
