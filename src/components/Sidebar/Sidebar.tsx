@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { FolderPlus, Clock, ChevronDown, Folder, GripVertical, Play, Upload, Sun, Moon, Monitor, RefreshCw, Edit2, GitCompare, Check, Trash2, AlertTriangle, X, Lock, Plus, Save, Eye, EyeOff, Globe } from 'lucide-react'
+import { FolderPlus, Clock, ChevronDown, Folder, GripVertical, Play, Upload, Sun, Moon, Monitor, RefreshCw, Edit2, GitCompare, Check, Trash2, AlertTriangle, X, Lock, Plus, Save, Eye, EyeOff, Globe, Copy, FileText, Pencil } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useCollectionStore } from '../../stores/collectionStore'
 import { useRequestStore } from '../../stores/requestStore'
@@ -69,6 +69,7 @@ function CollectionItem({
   depth = 0,
   activeSourceRequestId,
   onOpenContextMenu,
+  onOpenRequestContextMenu,
   draggedCollectionId,
   dropTargetCollectionId,
   canDropOnCollection,
@@ -81,6 +82,7 @@ function CollectionItem({
   depth?: number
   activeSourceRequestId?: string | null
   onOpenContextMenu: (collection: Collection, x: number, y: number) => void
+  onOpenRequestContextMenu: (request: HttpRequest, collectionId: string, x: number, y: number) => void
   draggedCollectionId?: string | null
   dropTargetCollectionId?: string | null
   canDropOnCollection: (targetCollectionId: string) => boolean
@@ -103,12 +105,12 @@ function CollectionItem({
             onCollectionHover(collection.id)
           }
         }}
-        className={`relative flex min-w-0 items-center gap-2 px-3 py-1.5 rounded cursor-pointer transition-colors group ${
+        className={`relative flex min-w-0 items-center gap-2 py-1.5 rounded cursor-pointer transition-colors group ${
           isDropTarget
             ? 'bg-accent/10 ring-1 ring-accent/35'
             : 'hover:bg-bg-hover'
         } ${isDragged ? 'bg-bg-tertiary ring-1 ring-accent/25 shadow-sm opacity-70' : ''}`}
-        style={{ paddingLeft: `${depth * 12 + 12}px` }}
+        style={{ paddingLeft: `${depth * 12}px`, paddingRight: '8px' }}
         onClick={() => {
           if (shouldSuppressToggle()) {
             consumeSuppressedToggle()
@@ -122,26 +124,10 @@ function CollectionItem({
           onOpenContextMenu(collection, e.clientX, e.clientY)
         }}
       >
-        <button
-          type="button"
-          onMouseDown={(e) => {
-            if (e.button !== 0) return
-            e.stopPropagation()
-            onCollectionPointerDown(collection.id, e.clientX, e.clientY)
-          }}
-          onClick={(e) => e.stopPropagation()}
-          onDoubleClick={(e) => e.stopPropagation()}
-          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-muted transition-colors ${
-            isDragged
-              ? 'cursor-grabbing text-text-secondary'
-              : 'cursor-grab hover:bg-bg-active hover:text-text-secondary'
-          }`}
-          title="Drag to reorder"
-          aria-label={`Drag ${collection.name}`}
+        <span
+          className="text-text-muted transition-transform duration-150"
+          style={{ transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)' }}
         >
-          <GripVertical className="h-3.5 w-3.5" />
-        </button>
-        <span className="text-text-muted transition-transform duration-150" style={{ transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)' }}>
           <ChevronDown className="w-3 h-3" />
         </span>
         <Folder className="w-3.5 h-3.5 text-text-tertiary" />
@@ -155,6 +141,23 @@ function CollectionItem({
 
       {isExpanded && (
         <div>
+          {collection.folders.map((folder) => (
+            <CollectionItem
+              key={folder.id}
+              collection={folder}
+              depth={depth + 1}
+              activeSourceRequestId={activeSourceRequestId}
+              onOpenContextMenu={onOpenContextMenu}
+              onOpenRequestContextMenu={onOpenRequestContextMenu}
+              draggedCollectionId={draggedCollectionId}
+              dropTargetCollectionId={dropTargetCollectionId}
+              canDropOnCollection={canDropOnCollection}
+              shouldSuppressToggle={shouldSuppressToggle}
+              consumeSuppressedToggle={consumeSuppressedToggle}
+              onCollectionPointerDown={onCollectionPointerDown}
+              onCollectionHover={onCollectionHover}
+            />
+          ))}
           {collection.requests.map((request) => (
             <div
               key={request.id}
@@ -163,8 +166,15 @@ function CollectionItem({
                   ? 'bg-accent/12 ring-1 ring-accent/20'
                   : 'hover:bg-bg-hover'
               }`}
-              style={{ paddingLeft: `${(depth + 1) * 12 + 12}px` }}
+              style={{ paddingLeft: `${(depth + 1) * 12 + 20}px` }}
               onClick={() => addTab(request, { collectionId: collection.id, requestId: request.id })}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                if (request.type === 'http') {
+                  onOpenRequestContextMenu(request, collection.id, e.clientX, e.clientY)
+                }
+              }}
             >
               {request.type === 'http' && (
                 <span className={methodBadgeClass[request.method]}>
@@ -182,22 +192,6 @@ function CollectionItem({
               </span>
             </div>
           ))}
-          {collection.folders.map((folder) => (
-            <CollectionItem
-              key={folder.id}
-              collection={folder}
-              depth={depth + 1}
-              activeSourceRequestId={activeSourceRequestId}
-              onOpenContextMenu={onOpenContextMenu}
-              draggedCollectionId={draggedCollectionId}
-              dropTargetCollectionId={dropTargetCollectionId}
-              canDropOnCollection={canDropOnCollection}
-              shouldSuppressToggle={shouldSuppressToggle}
-              consumeSuppressedToggle={consumeSuppressedToggle}
-              onCollectionPointerDown={onCollectionPointerDown}
-              onCollectionHover={onCollectionHover}
-            />
-          ))}
         </div>
       )}
     </div>
@@ -213,6 +207,10 @@ function CollectionContextMenu({
   onEditBaseUrl,
   onEditSpec,
   onEditSecrets,
+  onRename,
+  onAddFolder,
+  onAddRequest,
+  onDuplicate,
   onDeleteCollection,
 }: {
   collection: Collection
@@ -223,6 +221,10 @@ function CollectionContextMenu({
   onEditBaseUrl: (collection: Collection) => void
   onEditSpec: (collection: Collection) => void
   onEditSecrets: (collection: Collection) => void
+  onRename: (collection: Collection) => void
+  onAddFolder: (collection: Collection) => void
+  onAddRequest: (collection: Collection) => void
+  onDuplicate: (collection: Collection) => void
   onDeleteCollection: (collection: Collection) => void
 }) {
   useEffect(() => {
@@ -247,6 +249,27 @@ function CollectionContextMenu({
       >
         <button
           onClick={() => {
+            onAddRequest(collection)
+            onClose()
+          }}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
+        >
+          <FileText className="h-3.5 w-3.5" />
+          Add request
+        </button>
+        <button
+          onClick={() => {
+            onAddFolder(collection)
+            onClose()
+          }}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
+        >
+          <FolderPlus className="h-3.5 w-3.5" />
+          Add folder
+        </button>
+        <div className="border-t border-border" />
+        <button
+          onClick={() => {
             onRunCollection(collection)
             onClose()
           }}
@@ -258,13 +281,34 @@ function CollectionContextMenu({
         <div className="border-t border-border" />
         <button
           onClick={() => {
+            onRename(collection)
+            onClose()
+          }}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+          Rename
+        </button>
+        <button
+          onClick={() => {
+            onDuplicate(collection)
+            onClose()
+          }}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
+        >
+          <Copy className="h-3.5 w-3.5" />
+          Duplicate
+        </button>
+        <div className="border-t border-border" />
+        <button
+          onClick={() => {
             onEditBaseUrl(collection)
             onClose()
           }}
           className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
         >
           <Globe className="h-3.5 w-3.5" />
-          Collection base URL
+          Base URL
         </button>
         <button
           onClick={() => {
@@ -274,7 +318,7 @@ function CollectionContextMenu({
           className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
         >
           <Lock className="h-3.5 w-3.5" />
-          Collection secrets
+          Secrets
         </button>
         {hasOpenApiSource && (
           <button
@@ -305,7 +349,80 @@ function CollectionContextMenu({
           className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-error transition-colors hover:bg-error-muted"
         >
           <Trash2 className="h-3.5 w-3.5" />
-          Delete collection
+          Delete
+        </button>
+      </div>
+    </>
+  )
+}
+
+function RequestContextMenu({
+  request,
+  collectionId,
+  x,
+  y,
+  onClose,
+  onRename,
+  onDuplicate,
+  onDelete,
+}: {
+  request: HttpRequest
+  collectionId: string
+  x: number
+  y: number
+  onClose: () => void
+  onRename: (request: HttpRequest) => void
+  onDuplicate: (request: HttpRequest, collectionId: string) => void
+  onDelete: (request: HttpRequest, collectionId: string) => void
+}) {
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [onClose])
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div
+        className="fixed z-50 min-w-40 overflow-hidden rounded-lg border border-border bg-bg-secondary shadow-2xl"
+        style={{ left: x, top: y }}
+      >
+        <button
+          onClick={() => {
+            onRename(request)
+            onClose()
+          }}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+          Rename
+        </button>
+        <button
+          onClick={() => {
+            onDuplicate(request, collectionId)
+            onClose()
+          }}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
+        >
+          <Copy className="h-3.5 w-3.5" />
+          Duplicate
+        </button>
+        <div className="border-t border-border" />
+        <button
+          onClick={() => {
+            onDelete(request, collectionId)
+            onClose()
+          }}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-error transition-colors hover:bg-error-muted"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          Delete
         </button>
       </div>
     </>
@@ -623,6 +740,153 @@ function CollectionSecretsModal({
   )
 }
 
+function RenameModal({
+  title,
+  currentName,
+  onClose,
+  onSave,
+}: {
+  title: string
+  currentName: string
+  onClose: () => void
+  onSave: (newName: string) => void
+}) {
+  const [name, setName] = useState(currentName)
+
+  const handleSave = () => {
+    const trimmed = name.trim()
+    if (trimmed && trimmed !== currentName) {
+      onSave(trimmed)
+    }
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div
+        className="relative w-full max-w-md glass-elevated rounded-lg flex flex-col animate-scale-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Pencil className="w-4 h-4 text-accent" />
+            <span className="text-[14px] font-medium">{title}</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-bg-hover rounded transition-colors text-text-muted hover:text-text-secondary"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-4">
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSave()
+              if (e.key === 'Escape') onClose()
+            }}
+            placeholder="Enter name"
+            className="input-field text-[13px]"
+            autoFocus
+          />
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
+          <button onClick={onClose} className="btn-secondary">
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!name.trim() || name.trim() === currentName}
+            className="btn-primary"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AddFolderModal({
+  parentCollection,
+  onClose,
+  onSave,
+}: {
+  parentCollection: Collection
+  onClose: () => void
+  onSave: (name: string) => void
+}) {
+  const [name, setName] = useState('')
+
+  const handleSave = () => {
+    const trimmed = name.trim()
+    if (trimmed) {
+      onSave(trimmed)
+    }
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div
+        className="relative w-full max-w-md glass-elevated rounded-lg flex flex-col animate-scale-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-2">
+            <FolderPlus className="w-4 h-4 text-accent" />
+            <span className="text-[14px] font-medium">Add Folder</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-bg-hover rounded transition-colors text-text-muted hover:text-text-secondary"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-4">
+          <p className="mb-3 text-[12px] text-text-secondary">
+            Create a new folder inside "{parentCollection.name}"
+          </p>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSave()
+              if (e.key === 'Escape') onClose()
+            }}
+            placeholder="Folder name"
+            className="input-field text-[13px]"
+            autoFocus
+          />
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
+          <button onClick={onClose} className="btn-secondary">
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!name.trim()}
+            className="btn-primary"
+          >
+            Create Folder
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function CollectionBaseUrlModal({
   collection,
   onClose,
@@ -697,14 +961,17 @@ function CollectionBaseUrlModal({
 
 export function Sidebar() {
   const { activePanel, setActivePanel, theme, setTheme } = useUIStore()
-  const { collections, addCollection, deleteCollection, moveCollection, updateCollection } = useCollectionStore()
-  const { tabs, activeTabId } = useRequestStore()
+  const { collections, addCollection, deleteCollection, moveCollection, updateCollection, addRequestToCollection, duplicateCollection, removeRequestFromCollection, duplicateRequest, updateRequestInCollection } = useCollectionStore()
+  const { tabs, activeTabId, addTab } = useRequestStore()
   const [isCreating, setIsCreating] = useState(false)
   const [newCollectionName, setNewCollectionName] = useState('')
   const [showImportModal, setShowImportModal] = useState(false)
   const [editingCollection, setEditingCollection] = useState<Collection | null>(null)
   const [editingBaseUrlCollection, setEditingBaseUrlCollection] = useState<Collection | null>(null)
   const [editingSecretsCollection, setEditingSecretsCollection] = useState<Collection | null>(null)
+  const [renamingCollection, setRenamingCollection] = useState<Collection | null>(null)
+  const [renamingRequest, setRenamingRequest] = useState<{ request: HttpRequest; collectionId: string } | null>(null)
+  const [addingFolderToCollection, setAddingFolderToCollection] = useState<Collection | null>(null)
   const [diffEntries, setDiffEntries] = useState<{ left: HistoryEntry; right: HistoryEntry } | null>(null)
   const [pendingDeleteCollection, setPendingDeleteCollection] = useState<Collection | null>(null)
   const [pendingDragCollection, setPendingDragCollection] = useState<{ id: string; x: number; y: number } | null>(null)
@@ -712,6 +979,7 @@ export function Sidebar() {
   const [dropTargetCollectionId, setDropTargetCollectionId] = useState<string | null>(null)
   const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ collection: Collection; x: number; y: number } | null>(null)
+  const [requestContextMenu, setRequestContextMenu] = useState<{ request: HttpRequest; collectionId: string; x: number; y: number } | null>(null)
   const [runnerCollection, setRunnerCollection] = useState<Collection | null>(null)
   const suppressNextCollectionToggleRef = useRef(false)
 
@@ -756,6 +1024,51 @@ export function Sidebar() {
   const handleSaveBaseUrl = (collectionId: string, baseUrl: string | undefined) => {
     updateCollection(collectionId, { baseUrl })
     setEditingBaseUrlCollection(null)
+  }
+
+  const handleRename = (collectionId: string, newName: string) => {
+    updateCollection(collectionId, { name: newName })
+  }
+
+  const handleAddFolder = (parentId: string, folderName: string) => {
+    addCollection(folderName, parentId)
+  }
+
+  const handleAddRequest = (collection: Collection) => {
+    const newRequest: HttpRequest = {
+      id: crypto.randomUUID(),
+      name: 'New Request',
+      type: 'http',
+      method: 'GET',
+      url: '',
+      headers: [],
+      params: [],
+      cookies: [],
+      body: { type: 'none', content: '' },
+    }
+    addRequestToCollection(collection.id, newRequest)
+    // Open the new request in a tab
+    addTab(newRequest, { collectionId: collection.id, requestId: newRequest.id })
+  }
+
+  const handleDuplicate = (collection: Collection) => {
+    duplicateCollection(collection.id)
+  }
+
+  const handleRenameRequest = (requestId: string, newName: string) => {
+    updateRequestInCollection(requestId, { name: newName })
+  }
+
+  const handleDuplicateRequest = (request: HttpRequest, collectionId: string) => {
+    duplicateRequest(collectionId, request.id)
+  }
+
+  const handleDeleteRequest = (request: HttpRequest, collectionId: string) => {
+    removeRequestFromCollection(collectionId, request.id)
+  }
+
+  const openRequestContextMenu = (request: HttpRequest, collectionId: string, x: number, y: number) => {
+    setRequestContextMenu({ request, collectionId, x, y })
   }
 
   const handleCollectionDragEnd = () => {
@@ -828,6 +1141,9 @@ export function Sidebar() {
       onClick={() => {
         if (contextMenu) {
           setContextMenu(null)
+        }
+        if (requestContextMenu) {
+          setRequestContextMenu(null)
         }
       }}
     >
@@ -916,6 +1232,7 @@ export function Sidebar() {
                     collection={collection}
                     activeSourceRequestId={activeSourceRequestId}
                     onOpenContextMenu={openCollectionContextMenu}
+                    onOpenRequestContextMenu={openRequestContextMenu}
                     draggedCollectionId={draggedCollectionId}
                     dropTargetCollectionId={dropTargetCollectionId}
                     canDropOnCollection={(targetCollectionId) =>
@@ -997,6 +1314,23 @@ export function Sidebar() {
         />
       )}
 
+      {renamingCollection && (
+        <RenameModal
+          title="Rename"
+          currentName={renamingCollection.name}
+          onClose={() => setRenamingCollection(null)}
+          onSave={(newName) => handleRename(renamingCollection.id, newName)}
+        />
+      )}
+
+      {addingFolderToCollection && (
+        <AddFolderModal
+          parentCollection={addingFolderToCollection}
+          onClose={() => setAddingFolderToCollection(null)}
+          onSave={(name) => handleAddFolder(addingFolderToCollection.id, name)}
+        />
+      )}
+
       {contextMenu && (
         <CollectionContextMenu
           collection={contextMenu.collection}
@@ -1007,7 +1341,33 @@ export function Sidebar() {
           onEditBaseUrl={setEditingBaseUrlCollection}
           onEditSpec={setEditingCollection}
           onEditSecrets={setEditingSecretsCollection}
+          onRename={setRenamingCollection}
+          onAddFolder={setAddingFolderToCollection}
+          onAddRequest={handleAddRequest}
+          onDuplicate={handleDuplicate}
           onDeleteCollection={handleDeleteCollection}
+        />
+      )}
+
+      {requestContextMenu && (
+        <RequestContextMenu
+          request={requestContextMenu.request}
+          collectionId={requestContextMenu.collectionId}
+          x={requestContextMenu.x}
+          y={requestContextMenu.y}
+          onClose={() => setRequestContextMenu(null)}
+          onRename={(request) => setRenamingRequest({ request, collectionId: requestContextMenu.collectionId })}
+          onDuplicate={handleDuplicateRequest}
+          onDelete={handleDeleteRequest}
+        />
+      )}
+
+      {renamingRequest && (
+        <RenameModal
+          title="Rename Request"
+          currentName={renamingRequest.request.name}
+          onClose={() => setRenamingRequest(null)}
+          onSave={(newName) => handleRenameRequest(renamingRequest.request.id, newName)}
         />
       )}
 

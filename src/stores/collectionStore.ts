@@ -36,6 +36,13 @@ interface CollectionStore {
   clearHistory: () => void
   searchHistory: (query: string) => HistoryEntry[]
 
+  // Request actions
+  moveRequest: (requestId: string, fromCollectionId: string, toCollectionId: string) => void
+  duplicateRequest: (collectionId: string, requestId: string) => void
+
+  // Duplicate
+  duplicateCollection: (collectionId: string) => void
+
   // Helpers
   findCollectionById: (id: string) => Collection | null
   findCollectionByRequestId: (requestId: string) => Collection | null
@@ -248,6 +255,95 @@ export const useCollectionStore = create<CollectionStore>()(
             : { ...col, folders: updateCollections(col.folders) }
         )
       return { collections: updateCollections(state.collections) }
+    })
+  },
+
+  // Request actions
+  moveRequest: (requestId, fromCollectionId, toCollectionId) => {
+    if (fromCollectionId === toCollectionId) return
+
+    set((state) => {
+      let movedRequest: Request | null = null
+
+      // First pass: find and remove the request
+      const removeRequest = (cols: Collection[]): Collection[] =>
+        cols.map((col) => {
+          if (col.id === fromCollectionId) {
+            const request = col.requests.find((r) => r.id === requestId)
+            if (request) {
+              movedRequest = request
+              return { ...col, requests: col.requests.filter((r) => r.id !== requestId) }
+            }
+          }
+          return { ...col, folders: removeRequest(col.folders) }
+        })
+
+      const collectionsAfterRemove = removeRequest(state.collections)
+
+      if (!movedRequest) return state
+
+      // Second pass: add to target collection
+      const addRequest = (cols: Collection[]): Collection[] =>
+        cols.map((col) =>
+          col.id === toCollectionId
+            ? { ...col, requests: [...col.requests, movedRequest!] }
+            : { ...col, folders: addRequest(col.folders) }
+        )
+
+      return { collections: addRequest(collectionsAfterRemove) }
+    })
+  },
+
+  duplicateRequest: (collectionId, requestId) => {
+    set((state) => {
+      const updateCollections = (cols: Collection[]): Collection[] =>
+        cols.map((col) => {
+          if (col.id === collectionId) {
+            const request = col.requests.find((r) => r.id === requestId)
+            if (request) {
+              const duplicated = {
+                ...request,
+                id: crypto.randomUUID(),
+                name: `${request.name} (copy)`,
+              }
+              return { ...col, requests: [...col.requests, duplicated] }
+            }
+          }
+          return { ...col, folders: updateCollections(col.folders) }
+        })
+      return { collections: updateCollections(state.collections) }
+    })
+  },
+
+  duplicateCollection: (collectionId) => {
+    const { findCollectionById } = get()
+    const original = findCollectionById(collectionId)
+    if (!original) return
+
+    // Deep clone with new IDs
+    const cloneCollection = (col: Collection): Collection => ({
+      ...col,
+      id: crypto.randomUUID(),
+      name: `${col.name} (copy)`,
+      requests: col.requests.map((req) => ({ ...req, id: crypto.randomUUID() })),
+      folders: col.folders.map(cloneCollection),
+      openApiSource: undefined, // Don't copy OpenAPI source
+    })
+
+    const duplicated = cloneCollection(original)
+
+    set((state) => {
+      // Find parent and add duplicate as sibling
+      const addDuplicate = (cols: Collection[]): Collection[] => {
+        const index = cols.findIndex((c) => c.id === collectionId)
+        if (index !== -1) {
+          const next = [...cols]
+          next.splice(index + 1, 0, duplicated)
+          return next
+        }
+        return cols.map((col) => ({ ...col, folders: addDuplicate(col.folders) }))
+      }
+      return { collections: addDuplicate(state.collections) }
     })
   },
 
