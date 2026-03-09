@@ -22,6 +22,89 @@ const methodColors: Record<HttpMethod, string> = {
   HEAD: '#06B6D4',
 }
 
+// Syntax highlight JSON string for display
+function highlightJson(json: string): string {
+  if (!json.trim()) return ''
+
+  // Escape HTML
+  const escaped = json
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
+  // Apply syntax highlighting
+  return escaped
+    // Strings (but not keys)
+    .replace(/: *("(?:[^"\\]|\\.)*")/g, ': <span class="json-string">$1</span>')
+    // Keys
+    .replace(/"([^"]+)"(?=\s*:)/g, '<span class="json-key">"$1"</span>')
+    // Numbers
+    .replace(/:\s*(-?\d+\.?\d*)/g, ': <span class="json-number">$1</span>')
+    // Booleans
+    .replace(/:\s*(true|false)/g, ': <span class="json-boolean">$1</span>')
+    // Null
+    .replace(/:\s*(null)/g, ': <span class="json-null">$1</span>')
+    // Brackets
+    .replace(/([{}\[\]])/g, '<span class="json-bracket">$1</span>')
+}
+
+function JsonBodyEditor({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const highlightRef = useRef<HTMLPreElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  const handleScroll = () => {
+    if (textareaRef.current && highlightRef.current) {
+      highlightRef.current.scrollTop = textareaRef.current.scrollTop
+      highlightRef.current.scrollLeft = textareaRef.current.scrollLeft
+    }
+  }
+
+  const formatJson = () => {
+    try {
+      const parsed = JSON.parse(value)
+      onChange(JSON.stringify(parsed, null, 2))
+    } catch {
+      // Invalid JSON, don't format
+    }
+  }
+
+  const highlighted = useMemo(() => highlightJson(value), [value])
+
+  return (
+    <div ref={containerRef} className="json-editor-container">
+      <pre
+        ref={highlightRef}
+        className="json-editor-highlight"
+        dangerouslySetInnerHTML={{ __html: highlighted || '<span class="json-placeholder">{\n  "key": "value"\n}</span>' }}
+      />
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onScroll={handleScroll}
+        placeholder=""
+        className="json-editor-input"
+        spellCheck={false}
+      />
+      <button
+        type="button"
+        onClick={formatJson}
+        className="json-editor-format"
+        title="Format JSON"
+      >
+        Format
+      </button>
+    </div>
+  )
+}
+
 function KeyValueEditor({
   items,
   onChange,
@@ -661,11 +744,16 @@ export function RequestPanel() {
                     </button>
                   ))}
                 </div>
-                {httpRequest.body.type !== 'none' && (
+                {httpRequest.body.type !== 'none' && httpRequest.body.type === 'json' ? (
+                  <JsonBodyEditor
+                    value={httpRequest.body.content}
+                    onChange={(content) => updateRequestAndSource({ body: { ...httpRequest.body, content } })}
+                  />
+                ) : httpRequest.body.type !== 'none' && (
                   <textarea
                     value={httpRequest.body.content}
                     onChange={(e) => updateRequestAndSource({ body: { ...httpRequest.body, content: e.target.value } })}
-                    placeholder={httpRequest.body.type === 'json' ? '{\n  "key": "value"\n}' : 'Enter request body...'}
+                    placeholder="Enter request body..."
                     className="w-full h-48 input-field font-mono text-sm resize-none"
                   />
                 )}
