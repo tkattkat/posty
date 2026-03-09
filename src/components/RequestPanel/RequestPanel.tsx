@@ -209,8 +209,9 @@ export function RequestPanel() {
     setExecutionResult,
     setLoading,
     isLoading,
-    executionResult,
+    tabExecutionResults,
   } = useRequestStore()
+  const executionResult = activeTabId ? tabExecutionResults[activeTabId] ?? null : null
   const { addToHistory, findCollectionById, findCollectionByRequestId, getEffectiveBaseUrlForCollection, getEffectiveBaseUrlForRequest, updateRequestInCollection } = useCollectionStore()
   const [activeSubTab, setActiveSubTab] = useState<'params' | 'headers' | 'cookies' | 'body' | 'auth' | 'tests'>('params')
   const [showMethodDropdown, setShowMethodDropdown] = useState(false)

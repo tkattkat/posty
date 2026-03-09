@@ -191,7 +191,8 @@ function getResponseCookies(headers: Record<string, string>): ParsedCookie[] {
 }
 
 export function ResponsePanel() {
-  const { response, isLoading } = useRequestStore()
+  const { isLoading, activeTabId, tabResponses } = useRequestStore()
+  const response = activeTabId ? tabResponses[activeTabId] ?? null : null
   const [activeTab, setActiveTab] = useState<'body' | 'headers' | 'cookies'>('body')
   const [viewMode, setViewMode] = useState<'pretty' | 'raw'>('pretty')
   const [copied, setCopied] = useState(false)

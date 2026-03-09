@@ -27,8 +27,9 @@ const createNewHttpRequest = (): HttpRequest => ({
 interface RequestStore {
   tabs: Tab[]
   activeTabId: string | null
-  response: HttpResponse | null
-  executionResult: RequestExecutionResult | null
+  // Per-tab response and execution results
+  tabResponses: Record<string, HttpResponse | null>
+  tabExecutionResults: Record<string, RequestExecutionResult | null>
   isLoading: boolean
 
   // Actions
@@ -41,6 +42,8 @@ interface RequestStore {
   setLoading: (loading: boolean) => void
   getActiveRequest: () => Request | null
   updateActiveRequest: (updates: Partial<Request>) => void
+  getResponse: () => HttpResponse | null
+  getExecutionResult: () => RequestExecutionResult | null
 }
 
 export const useRequestStore = create<RequestStore>()(
@@ -48,8 +51,8 @@ export const useRequestStore = create<RequestStore>()(
     (set, get) => ({
       tabs: [],
       activeTabId: null,
-      response: null,
-      executionResult: null,
+      tabResponses: {},
+      tabExecutionResults: {},
       isLoading: false,
 
       addTab: (request, source) => {
@@ -92,12 +95,21 @@ export const useRequestStore = create<RequestStore>()(
             }
           }
 
-          return { tabs: newTabs, activeTabId: newActiveTabId }
+          // Clean up response data for removed tab
+          const { [tabId]: _removedResponse, ...remainingResponses } = state.tabResponses
+          const { [tabId]: _removedResult, ...remainingResults } = state.tabExecutionResults
+
+          return {
+            tabs: newTabs,
+            activeTabId: newActiveTabId,
+            tabResponses: remainingResponses,
+            tabExecutionResults: remainingResults,
+          }
         })
       },
 
       setActiveTab: (tabId) => {
-        set({ activeTabId: tabId, response: null, executionResult: null })
+        set({ activeTabId: tabId })
       },
 
       updateRequest: (tabId, updates) => {
@@ -111,11 +123,19 @@ export const useRequestStore = create<RequestStore>()(
       },
 
       setResponse: (response) => {
-        set({ response })
+        const { activeTabId } = get()
+        if (!activeTabId) return
+        set((state) => ({
+          tabResponses: { ...state.tabResponses, [activeTabId]: response },
+        }))
       },
 
       setExecutionResult: (executionResult) => {
-        set({ executionResult })
+        const { activeTabId } = get()
+        if (!activeTabId) return
+        set((state) => ({
+          tabExecutionResults: { ...state.tabExecutionResults, [activeTabId]: executionResult },
+        }))
       },
 
       setLoading: (loading) => {
@@ -133,6 +153,16 @@ export const useRequestStore = create<RequestStore>()(
         if (activeTabId) {
           updateRequest(activeTabId, updates)
         }
+      },
+
+      getResponse: () => {
+        const { activeTabId, tabResponses } = get()
+        return activeTabId ? tabResponses[activeTabId] ?? null : null
+      },
+
+      getExecutionResult: () => {
+        const { activeTabId, tabExecutionResults } = get()
+        return activeTabId ? tabExecutionResults[activeTabId] ?? null : null
       },
     }),
     {

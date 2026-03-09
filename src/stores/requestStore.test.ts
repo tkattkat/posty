@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useRequestStore } from './requestStore'
+import type { HttpRequest } from '../types'
 
 describe('Request Store', () => {
   beforeEach(() => {
@@ -7,20 +8,21 @@ describe('Request Store', () => {
     useRequestStore.setState({
       tabs: [],
       activeTabId: null,
-      response: null,
+      tabResponses: {},
+      tabExecutionResults: {},
       isLoading: false,
     })
   })
 
   describe('addTab', () => {
     it('adds a new tab with default request', () => {
-      const { addTab, tabs } = useRequestStore.getState()
+      const { addTab } = useRequestStore.getState()
       addTab()
 
       const state = useRequestStore.getState()
       expect(state.tabs.length).toBe(1)
       expect(state.tabs[0].request.type).toBe('http')
-      expect(state.tabs[0].request.method).toBe('GET')
+      expect((state.tabs[0].request as HttpRequest).method).toBe('GET')
       expect(state.activeTabId).toBe(state.tabs[0].id)
     })
 
@@ -42,12 +44,13 @@ describe('Request Store', () => {
         url: 'https://api.example.com',
         headers: [],
         params: [],
+        cookies: [],
         body: { type: 'json', content: '{}' },
       })
 
       const state = useRequestStore.getState()
       expect(state.tabs[0].request.name).toBe('Custom Request')
-      expect(state.tabs[0].request.method).toBe('POST')
+      expect((state.tabs[0].request as HttpRequest).method).toBe('POST')
     })
   })
 
@@ -142,8 +145,12 @@ describe('Request Store', () => {
   })
 
   describe('setResponse', () => {
-    it('stores the response', () => {
-      const { setResponse } = useRequestStore.getState()
+    it('stores the response per tab', () => {
+      // First add a tab so we have an activeTabId
+      const { addTab, setResponse } = useRequestStore.getState()
+      addTab()
+      const activeTabId = useRequestStore.getState().activeTabId!
+
       setResponse({
         status: 200,
         statusText: 'OK',
@@ -154,8 +161,8 @@ describe('Request Store', () => {
       })
 
       const state = useRequestStore.getState()
-      expect(state.response?.status).toBe(200)
-      expect(state.response?.body).toBe('{"success": true}')
+      expect(state.tabResponses[activeTabId]?.status).toBe(200)
+      expect(state.tabResponses[activeTabId]?.body).toBe('{"success": true}')
     })
   })
 

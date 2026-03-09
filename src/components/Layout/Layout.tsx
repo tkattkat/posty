@@ -18,7 +18,7 @@ function flattenCollections(collections: Collection[]): Collection[] {
 }
 
 export function Layout() {
-  const { isCommandPaletteOpen, openCommandPalette, closeCommandPalette, isSidebarCollapsed } = useUIStore()
+  const { isCommandPaletteOpen, openCommandPalette, closeCommandPalette, isSidebarCollapsed, toggleSidebar } = useUIStore()
   const { tabs, addTab } = useRequestStore()
   const isMacOS = import.meta.env.TAURI_ENV_PLATFORM === 'darwin'
   const layoutRef = useRef<HTMLDivElement | null>(null)
@@ -33,6 +33,10 @@ export function Layout() {
         e.preventDefault()
         addTab()
       }
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault()
+        toggleSidebar()
+      }
       if (e.key === 'Escape' && isCommandPaletteOpen) {
         closeCommandPalette()
       }
@@ -40,7 +44,7 @@ export function Layout() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isCommandPaletteOpen, openCommandPalette, closeCommandPalette, addTab])
+  }, [isCommandPaletteOpen, openCommandPalette, closeCommandPalette, addTab, toggleSidebar])
 
   useEffect(() => {
     if (tabs.length === 0) {
