@@ -103,6 +103,7 @@ export function resolveHttpRequest(
 
   const resolvedHeaders = resolveKeyValueItems(request.headers, secrets, runtimeVariables)
   const resolvedParams = resolveKeyValueItems(request.params, secrets, runtimeVariables)
+  const resolvedCookies = resolveKeyValueItems(request.cookies ?? [], secrets, runtimeVariables)
   const resolvedAuth = request.auth
     ? {
         ...request.auth,
@@ -169,6 +170,7 @@ export function resolveHttpRequest(
     ),
     headers: nextHeaders,
     params: nextParams,
+    cookies: resolvedCookies,
     body: {
       ...request.body,
       content: resolveTemplateReferences(request.body.content, secrets, runtimeVariables),
@@ -193,6 +195,7 @@ export async function executeHttpRequest(
   context: ExecutionContext = {}
 ): Promise<RequestExecutionResult> {
   const resolvedRequest = resolveHttpRequest(request, context)
+  const enabledCookies = getEnabledItems(resolvedRequest.cookies ?? [])
   const response = normalizeHttpResponse(
     await invoke<RawHttpResponse>('send_http_request', {
       method: resolvedRequest.method,
@@ -201,6 +204,12 @@ export async function executeHttpRequest(
         acc[header.key] = header.value
         return acc
       }, {}),
+      cookies: enabledCookies.length > 0
+        ? enabledCookies.reduce<Record<string, string>>((acc, cookie) => {
+            acc[cookie.key] = cookie.value
+            return acc
+          }, {})
+        : null,
       body: resolvedRequest.body.type !== 'none' ? resolvedRequest.body.content : null,
     })
   )

@@ -78,4 +78,115 @@ describe('requestAssertions', () => {
       traceId: 'trace-123',
     })
   })
+
+  describe('cookie extraction', () => {
+    const responseWithCookies: HttpResponse = {
+      status: 200,
+      statusText: 'OK',
+      headers: {
+        'content-type': 'application/json',
+        'set-cookie': 'session=abc123; Path=/; HttpOnly, user=john; Path=/',
+      },
+      body: '{}',
+      time: 50,
+      size: 2,
+    }
+
+    it('extracts cookie value from Set-Cookie header', () => {
+      const extractions: RequestVariableExtraction[] = [
+        {
+          id: 'session',
+          enabled: true,
+          source: 'cookie',
+          path: 'session',
+          variableName: 'sessionId',
+        },
+      ]
+
+      expect(extractRuntimeVariables(extractions, responseWithCookies)).toEqual({
+        sessionId: 'abc123',
+      })
+    })
+
+    it('extracts multiple cookies from Set-Cookie header', () => {
+      const extractions: RequestVariableExtraction[] = [
+        {
+          id: 'session',
+          enabled: true,
+          source: 'cookie',
+          path: 'session',
+          variableName: 'sessionId',
+        },
+        {
+          id: 'user',
+          enabled: true,
+          source: 'cookie',
+          path: 'user',
+          variableName: 'userName',
+        },
+      ]
+
+      expect(extractRuntimeVariables(extractions, responseWithCookies)).toEqual({
+        sessionId: 'abc123',
+        userName: 'john',
+      })
+    })
+
+    it('returns empty when cookie not found', () => {
+      const extractions: RequestVariableExtraction[] = [
+        {
+          id: 'missing',
+          enabled: true,
+          source: 'cookie',
+          path: 'nonexistent',
+          variableName: 'missing',
+        },
+      ]
+
+      expect(extractRuntimeVariables(extractions, responseWithCookies)).toEqual({})
+    })
+
+    it('handles case-insensitive cookie name matching', () => {
+      const extractions: RequestVariableExtraction[] = [
+        {
+          id: 'session',
+          enabled: true,
+          source: 'cookie',
+          path: 'SESSION',
+          variableName: 'sessionId',
+        },
+      ]
+
+      expect(extractRuntimeVariables(extractions, responseWithCookies)).toEqual({
+        sessionId: 'abc123',
+      })
+    })
+
+    it('handles cookies with equals sign in value', () => {
+      const responseWithComplexCookie: HttpResponse = {
+        status: 200,
+        statusText: 'OK',
+        headers: {
+          'set-cookie': 'data=key=value; Path=/',
+        },
+        body: '{}',
+        time: 50,
+        size: 2,
+      }
+
+      const extractions: RequestVariableExtraction[] = [
+        {
+          id: 'data',
+          enabled: true,
+          source: 'cookie',
+          path: 'data',
+          variableName: 'dataValue',
+        },
+      ]
+
+      expect(extractRuntimeVariables(extractions, responseWithComplexCookie)).toEqual({
+        dataValue: 'key=value',
+      })
+    })
+  })
 })

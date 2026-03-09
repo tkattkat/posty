@@ -17,6 +17,7 @@ const request: HttpRequest = {
   params: [
     { id: 'param-1', key: 'include', value: 'teams', enabled: true },
   ],
+  cookies: [],
   body: {
     type: 'none',
     content: '',
@@ -134,5 +135,91 @@ describe('requestExecution', () => {
 
     expect(result.assertions).toHaveLength(0)
     expect(result.passed).toBe(false)
+  })
+
+  describe('cookies', () => {
+    it('resolves cookie values with secrets and runtime variables', () => {
+      const requestWithCookies: HttpRequest = {
+        ...request,
+        cookies: [
+          { id: 'cookie-1', key: 'session', value: '{{sessionToken}}', enabled: true },
+          { id: 'cookie-2', key: 'user', value: 'john', enabled: true },
+        ],
+      }
+
+      const resolved = resolveHttpRequest(requestWithCookies, {
+        secrets,
+        runtimeVariables: {
+          userId: 'user-42',
+          projectId: 'proj-9',
+          sessionToken: 'session-abc',
+        },
+      })
+
+      expect(resolved.cookies).toHaveLength(2)
+      expect(resolved.cookies[0].value).toBe('session-abc')
+      expect(resolved.cookies[1].value).toBe('john')
+    })
+
+    it('sends cookies to backend as separate parameter', async () => {
+      mockedInvoke.mockResolvedValue({
+        status: 200,
+        status_text: 'OK',
+        headers: {},
+        body: '{}',
+        time: 50,
+        size: 2,
+      })
+
+      const requestWithCookies: HttpRequest = {
+        ...request,
+        cookies: [
+          { id: 'cookie-1', key: 'session', value: 'abc123', enabled: true },
+          { id: 'cookie-2', key: 'disabled', value: 'xyz', enabled: false },
+        ],
+        tests: [],
+        extractions: [],
+      }
+
+      await executeHttpRequest(requestWithCookies, {
+        secrets,
+        runtimeVariables: {
+          userId: 'user-42',
+          projectId: 'proj-9',
+        },
+      })
+
+      expect(mockedInvoke).toHaveBeenCalledWith('send_http_request', expect.objectContaining({
+        cookies: { session: 'abc123' },
+      }))
+    })
+
+    it('sends null cookies when no cookies are enabled', async () => {
+      mockedInvoke.mockResolvedValue({
+        status: 200,
+        status_text: 'OK',
+        headers: {},
+        body: '{}',
+        time: 50,
+        size: 2,
+      })
+
+      await executeHttpRequest({
+        ...request,
+        cookies: [],
+        tests: [],
+        extractions: [],
+      }, {
+        secrets,
+        runtimeVariables: {
+          userId: 'user-42',
+          projectId: 'proj-9',
+        },
+      })
+
+      expect(mockedInvoke).toHaveBeenCalledWith('send_http_request', expect.objectContaining({
+        cookies: null,
+      }))
+    })
   })
 })

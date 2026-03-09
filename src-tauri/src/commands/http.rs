@@ -18,6 +18,7 @@ pub async fn send_http_request(
     method: String,
     url: String,
     headers: HashMap<String, String>,
+    cookies: Option<HashMap<String, String>>,
     body: Option<String>,
 ) -> Result<HttpResponse, String> {
     let client = Client::builder()
@@ -35,6 +36,18 @@ pub async fn send_http_request(
     // Add headers
     for (key, value) in headers {
         request = request.header(&key, &value);
+    }
+
+    // Add cookies as Cookie header
+    if let Some(cookie_map) = cookies {
+        if !cookie_map.is_empty() {
+            let cookie_header: String = cookie_map
+                .iter()
+                .map(|(k, v)| format!("{}={}", k, v))
+                .collect::<Vec<_>>()
+                .join("; ");
+            request = request.header("Cookie", cookie_header);
+        }
     }
 
     // Add body if present

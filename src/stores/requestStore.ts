@@ -15,6 +15,7 @@ const createNewHttpRequest = (): HttpRequest => ({
   url: '',
   headers: [],
   params: [],
+  cookies: [],
   body: {
     type: 'none',
     content: '',

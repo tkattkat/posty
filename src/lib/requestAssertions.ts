@@ -59,6 +59,27 @@ function getResponseHeader(response: HttpResponse, headerName: string): string |
   return match?.[1]
 }
 
+function getResponseCookieValue(response: HttpResponse, cookieName: string): string | undefined {
+  const setCookieHeader = getResponseHeader(response, 'set-cookie')
+  if (!setCookieHeader) return undefined
+
+  // Parse all cookies from the Set-Cookie header (may be comma-separated for multiple cookies)
+  const cookieStrings = setCookieHeader.split(/,(?=\s*[^;,]+=)/)
+
+  for (const cookieStr of cookieStrings) {
+    const parts = cookieStr.trim().split(';')
+    const [nameValue] = parts
+    const [name, ...valueParts] = nameValue.split('=')
+    const value = valueParts.join('=') // Handle values with = in them
+
+    if (name.trim().toLowerCase() === cookieName.trim().toLowerCase()) {
+      return value
+    }
+  }
+
+  return undefined
+}
+
 function formatTestName(test: RequestTest): string {
   if (test.label?.trim()) {
     return test.label.trim()
@@ -198,6 +219,14 @@ export function extractRuntimeVariables(
         const headerValue = getResponseHeader(response, extraction.path)
         if (headerValue !== undefined) {
           variables[extraction.variableName.trim()] = headerValue
+        }
+        return variables
+      }
+
+      if (extraction.source === 'cookie') {
+        const cookieValue = getResponseCookieValue(response, extraction.path)
+        if (cookieValue !== undefined) {
+          variables[extraction.variableName.trim()] = cookieValue
         }
         return variables
       }

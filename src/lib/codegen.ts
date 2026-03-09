@@ -15,6 +15,14 @@ function getEnabledParams(params: KeyValue[]): KeyValue[] {
   return params.filter((p) => p.enabled && p.key)
 }
 
+function getEnabledCookies(cookies: KeyValue[]): KeyValue[] {
+  return cookies.filter((c) => c.enabled && c.key)
+}
+
+function buildCookieHeader(cookies: KeyValue[]): string {
+  return cookies.map((c) => `${c.key}=${c.value}`).join('; ')
+}
+
 function buildUrl(url: string, params: KeyValue[]): string {
   const enabledParams = getEnabledParams(params)
   if (enabledParams.length === 0) return url
@@ -44,6 +52,12 @@ function generateCurl(request: HttpRequest): string {
     parts.push(`-H '${header.key}: ${header.value}'`)
   }
 
+  // Cookies
+  const cookies = getEnabledCookies(request.cookies ?? [])
+  if (cookies.length > 0) {
+    parts.push(`-H 'Cookie: ${buildCookieHeader(cookies)}'`)
+  }
+
   // Auth headers
   if (request.auth?.type === 'bearer' && request.auth.token) {
     parts.push(`-H 'Authorization: Bearer ${request.auth.token}'`)
@@ -66,12 +80,18 @@ function generateCurl(request: HttpRequest): string {
 
 function generateJavaScript(request: HttpRequest): string {
   const headers = getEnabledHeaders(request.headers)
+  const cookies = getEnabledCookies(request.cookies ?? [])
   const url = buildUrl(request.url, request.params)
 
   let headersObj: Record<string, string> = {}
 
   for (const header of headers) {
     headersObj[header.key] = header.value
+  }
+
+  // Cookies
+  if (cookies.length > 0) {
+    headersObj['Cookie'] = buildCookieHeader(cookies)
   }
 
   // Auth
@@ -112,6 +132,7 @@ ${options.join(',\n')}
 function generatePython(request: HttpRequest): string {
   const headers = getEnabledHeaders(request.headers)
   const params = getEnabledParams(request.params)
+  const cookies = getEnabledCookies(request.cookies ?? [])
 
   const lines: string[] = ['import requests', '']
 
@@ -136,6 +157,15 @@ function generatePython(request: HttpRequest): string {
 
   if (Object.keys(headersDict).length > 0) {
     lines.push(`headers = ${JSON.stringify(headersDict, null, 4)}`)
+  }
+
+  // Cookies (Python requests has native cookie support)
+  if (cookies.length > 0) {
+    const cookiesDict: Record<string, string> = {}
+    for (const cookie of cookies) {
+      cookiesDict[cookie.key] = cookie.value
+    }
+    lines.push(`cookies = ${JSON.stringify(cookiesDict, null, 4)}`)
   }
 
   // Params
@@ -163,6 +193,9 @@ function generatePython(request: HttpRequest): string {
   if (Object.keys(headersDict).length > 0) {
     callParts.push('headers=headers')
   }
+  if (cookies.length > 0) {
+    callParts.push('cookies=cookies')
+  }
   if (params.length > 0) {
     callParts.push('params=params')
   }
@@ -183,6 +216,7 @@ function generatePython(request: HttpRequest): string {
 function generateGo(request: HttpRequest): string {
   const url = buildUrl(request.url, request.params)
   const headers = getEnabledHeaders(request.headers)
+  const cookies = getEnabledCookies(request.cookies ?? [])
 
   let bodySetup = ''
   let bodyVar = 'nil'
@@ -195,6 +229,11 @@ function generateGo(request: HttpRequest): string {
   let headerSetup = ''
   for (const header of headers) {
     headerSetup += `\n\treq.Header.Set("${header.key}", "${header.value}")`
+  }
+
+  // Cookies
+  if (cookies.length > 0) {
+    headerSetup += `\n\treq.Header.Set("Cookie", "${buildCookieHeader(cookies)}")`
   }
 
   if (request.auth?.type === 'bearer' && request.auth.token) {
@@ -234,10 +273,16 @@ func main() {${bodySetup}
 function generateRust(request: HttpRequest): string {
   const url = buildUrl(request.url, request.params)
   const headers = getEnabledHeaders(request.headers)
+  const cookies = getEnabledCookies(request.cookies ?? [])
 
   let headerSetup = ''
   for (const header of headers) {
     headerSetup += `\n        .header("${header.key}", "${header.value}")`
+  }
+
+  // Cookies
+  if (cookies.length > 0) {
+    headerSetup += `\n        .header("Cookie", "${buildCookieHeader(cookies)}")`
   }
 
   if (request.auth?.type === 'bearer' && request.auth.token) {
@@ -274,10 +319,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 function generatePHP(request: HttpRequest): string {
   const url = buildUrl(request.url, request.params)
   const headers = getEnabledHeaders(request.headers)
+  const cookies = getEnabledCookies(request.cookies ?? [])
 
   const headerLines: string[] = []
   for (const header of headers) {
     headerLines.push(`    '${header.key}: ${header.value}'`)
+  }
+
+  // Cookies
+  if (cookies.length > 0) {
+    headerLines.push(`    'Cookie: ${buildCookieHeader(cookies)}'`)
   }
 
   if (request.auth?.type === 'bearer' && request.auth.token) {

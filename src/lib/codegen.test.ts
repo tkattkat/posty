@@ -10,6 +10,7 @@ const createBasicRequest = (): HttpRequest => ({
   url: 'https://api.example.com/users',
   headers: [],
   params: [],
+  cookies: [],
   body: {
     type: 'none',
     content: '',
@@ -208,6 +209,94 @@ describe('Code Generator', () => {
 
       expect(code).toContain('active=1')
       expect(code).not.toContain('inactive')
+    })
+
+    it('excludes disabled cookies', () => {
+      const request = createBasicRequest()
+      request.cookies = [
+        { id: '1', key: 'session', value: 'abc', enabled: true },
+        { id: '2', key: 'disabled_cookie', value: 'xyz', enabled: false },
+      ]
+      const code = generateCode({ request, language: 'curl' })
+
+      expect(code).toContain('session=abc')
+      expect(code).not.toContain('disabled_cookie')
+    })
+  })
+
+  describe('Cookies', () => {
+    it('includes cookies in cURL as Cookie header', () => {
+      const request = createBasicRequest()
+      request.cookies = [
+        { id: '1', key: 'session', value: 'abc123', enabled: true },
+        { id: '2', key: 'user', value: 'john', enabled: true },
+      ]
+      const code = generateCode({ request, language: 'curl' })
+
+      expect(code).toContain("-H 'Cookie: session=abc123; user=john'")
+    })
+
+    it('includes cookies in JavaScript as Cookie header', () => {
+      const request = createBasicRequest()
+      request.cookies = [
+        { id: '1', key: 'token', value: 'xyz', enabled: true },
+      ]
+      const code = generateCode({ request, language: 'javascript' })
+
+      expect(code).toContain('"Cookie"')
+      expect(code).toContain('token=xyz')
+    })
+
+    it('includes cookies in Python with native cookies param', () => {
+      const request = createBasicRequest()
+      request.cookies = [
+        { id: '1', key: 'auth', value: 'secret', enabled: true },
+      ]
+      const code = generateCode({ request, language: 'python' })
+
+      expect(code).toContain('cookies=cookies')
+      expect(code).toContain('"auth"')
+      expect(code).toContain('"secret"')
+    })
+
+    it('includes cookies in Go as Cookie header', () => {
+      const request = createBasicRequest()
+      request.cookies = [
+        { id: '1', key: 'sid', value: '12345', enabled: true },
+      ]
+      const code = generateCode({ request, language: 'go' })
+
+      expect(code).toContain('req.Header.Set("Cookie"')
+      expect(code).toContain('sid=12345')
+    })
+
+    it('includes cookies in Rust as Cookie header', () => {
+      const request = createBasicRequest()
+      request.cookies = [
+        { id: '1', key: 'jwt', value: 'eyJ...', enabled: true },
+      ]
+      const code = generateCode({ request, language: 'rust' })
+
+      expect(code).toContain('.header("Cookie"')
+      expect(code).toContain('jwt=eyJ...')
+    })
+
+    it('includes cookies in PHP as Cookie header', () => {
+      const request = createBasicRequest()
+      request.cookies = [
+        { id: '1', key: 'PHPSESSID', value: 'abc', enabled: true },
+      ]
+      const code = generateCode({ request, language: 'php' })
+
+      expect(code).toContain("'Cookie: PHPSESSID=abc'")
+    })
+
+    it('does not include Cookie header when no cookies', () => {
+      const request = createBasicRequest()
+      request.cookies = []
+      const code = generateCode({ request, language: 'curl' })
+
+      expect(code).not.toContain('Cookie:')
     })
   })
 })

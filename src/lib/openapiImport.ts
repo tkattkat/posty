@@ -41,6 +41,7 @@ export function convertImportedCollection(imported: ImportedCollection): Collect
       url: req.url,
       headers: req.headers as KeyValue[],
       params: req.params as KeyValue[],
+      cookies: [],
       body: req.body
         ? { type: req.body.type as 'json' | 'text' | 'form' | 'none', content: req.body.content }
         : { type: 'none', content: '' },

@@ -37,7 +37,7 @@ export interface RequestTest {
 export interface RequestVariableExtraction {
   id: string
   enabled: boolean
-  source: 'json-path' | 'header'
+  source: 'json-path' | 'header' | 'cookie'
   path: string
   variableName: string
 }
@@ -51,6 +51,7 @@ export interface HttpRequest {
   url: string
   headers: KeyValue[]
   params: KeyValue[]
+  cookies: KeyValue[]
   body: {
     type: 'none' | 'json' | 'form' | 'text' | 'binary'
     content: string

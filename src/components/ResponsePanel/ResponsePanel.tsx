@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Copy, Check, Code2, FileText, Clock, HardDrive, Zap, ChevronRight, ChevronDown } from 'lucide-react'
+import { Copy, Check, Code2, FileText, Clock, HardDrive, Zap, ChevronRight, ChevronDown, Cookie } from 'lucide-react'
 import { useRequestStore } from '../../stores/requestStore'
 
 function formatBytes(bytes: number): string {
@@ -152,11 +152,54 @@ function JsonViewer({ json }: { json: string }) {
   )
 }
 
+interface ParsedCookie {
+  name: string
+  value: string
+  attributes: Record<string, string>
+}
+
+function parseSetCookieHeader(header: string): ParsedCookie {
+  const parts = header.split(';').map(p => p.trim())
+  const [nameValue, ...attributeParts] = parts
+  const [name, ...valueParts] = nameValue.split('=')
+  const value = valueParts.join('=') // Handle values with = in them
+
+  const attributes: Record<string, string> = {}
+  for (const attr of attributeParts) {
+    const [attrName, ...attrValueParts] = attr.split('=')
+    attributes[attrName.toLowerCase()] = attrValueParts.join('=') || 'true'
+  }
+
+  return { name, value, attributes }
+}
+
+function getResponseCookies(headers: Record<string, string>): ParsedCookie[] {
+  const cookies: ParsedCookie[] = []
+
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === 'set-cookie') {
+      // Handle multiple cookies in the same header (comma-separated, but be careful with Expires)
+      // Most servers send separate headers, which get joined with comma in our HashMap
+      const cookieStrings = value.split(/,(?=\s*[^;,]+=)/)
+      for (const cookieStr of cookieStrings) {
+        cookies.push(parseSetCookieHeader(cookieStr.trim()))
+      }
+    }
+  }
+
+  return cookies
+}
+
 export function ResponsePanel() {
   const { response, isLoading } = useRequestStore()
-  const [activeTab, setActiveTab] = useState<'body' | 'headers'>('body')
+  const [activeTab, setActiveTab] = useState<'body' | 'headers' | 'cookies'>('body')
   const [viewMode, setViewMode] = useState<'pretty' | 'raw'>('pretty')
   const [copied, setCopied] = useState(false)
+
+  const responseCookies = useMemo(() => {
+    if (!response) return []
+    return getResponseCookies(response.headers)
+  }, [response])
 
   const handleCopy = async () => {
     if (!response) return
@@ -253,6 +296,18 @@ export function ResponsePanel() {
               {Object.keys(response.headers).length}
             </span>
           </button>
+          {responseCookies.length > 0 && (
+            <button
+              onClick={() => setActiveTab('cookies')}
+              className={`tab flex items-center gap-1.5 ${activeTab === 'cookies' ? 'tab-active' : ''}`}
+            >
+              <Cookie className="w-3.5 h-3.5" />
+              Cookies
+              <span className="text-[10px] text-text-muted tabular-nums">
+                {responseCookies.length}
+              </span>
+            </button>
+          )}
         </div>
 
         {activeTab === 'body' && isJson && (
@@ -299,6 +354,40 @@ export function ResponsePanel() {
               <div key={key} className="response-header">
                 <span className="response-header-key">{key}</span>
                 <span className="response-header-value">{value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'cookies' && (
+          <div className="space-y-3 p-4">
+            {responseCookies.map((cookie, index) => (
+              <div key={index} className="bg-surface-raised border border-border rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-mono text-sm font-medium text-text-primary">{cookie.name}</span>
+                  <div className="flex gap-1.5">
+                    {cookie.attributes.httponly && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning">HttpOnly</span>
+                    )}
+                    {cookie.attributes.secure && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/20 text-success">Secure</span>
+                    )}
+                    {cookie.attributes.samesite && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent/20 text-accent">
+                        SameSite={cookie.attributes.samesite}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="font-mono text-xs text-text-secondary break-all mb-2">{cookie.value}</div>
+                {Object.keys(cookie.attributes).length > 0 && (
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-text-muted">
+                    {cookie.attributes.path && <span>Path: {cookie.attributes.path}</span>}
+                    {cookie.attributes.domain && <span>Domain: {cookie.attributes.domain}</span>}
+                    {cookie.attributes.expires && <span>Expires: {cookie.attributes.expires}</span>}
+                    {cookie.attributes['max-age'] && <span>Max-Age: {cookie.attributes['max-age']}s</span>}
+                  </div>
+                )}
               </div>
             ))}
           </div>

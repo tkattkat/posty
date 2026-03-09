@@ -212,7 +212,7 @@ export function RequestPanel() {
     executionResult,
   } = useRequestStore()
   const { addToHistory, findCollectionById, findCollectionByRequestId, getEffectiveBaseUrlForCollection, getEffectiveBaseUrlForRequest, updateRequestInCollection } = useCollectionStore()
-  const [activeSubTab, setActiveSubTab] = useState<'params' | 'headers' | 'body' | 'auth' | 'tests'>('params')
+  const [activeSubTab, setActiveSubTab] = useState<'params' | 'headers' | 'cookies' | 'body' | 'auth' | 'tests'>('params')
   const [showMethodDropdown, setShowMethodDropdown] = useState(false)
   const [showCodeGen, setShowCodeGen] = useState(false)
   const requestSplitRef = useRef<HTMLDivElement | null>(null)
@@ -490,7 +490,7 @@ export function RequestPanel() {
         <div className="request-pane flex flex-col min-h-0">
           {/* Sub Tabs */}
           <div className="flex gap-1 px-4 py-2 border-b border-border flex-shrink-0">
-            {(['params', 'headers', 'body', 'auth', 'tests'] as const).map((tab) => (
+            {(['params', 'headers', 'cookies', 'body', 'auth', 'tests'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveSubTab(tab)}
@@ -505,6 +505,11 @@ export function RequestPanel() {
                 {tab === 'headers' && httpRequest && httpRequest.headers.length > 0 && (
                   <span className="text-[10px] text-text-muted tabular-nums">
                     {httpRequest.headers.length}
+                  </span>
+                )}
+                {tab === 'cookies' && httpRequest && (httpRequest.cookies?.length ?? 0) > 0 && (
+                  <span className="text-[10px] text-text-muted tabular-nums">
+                    {httpRequest.cookies?.length}
                   </span>
                 )}
                 {tab === 'tests' && httpRequest && (httpRequest.tests?.length ?? 0) > 0 && (
@@ -531,6 +536,16 @@ export function RequestPanel() {
                 items={httpRequest.headers}
                 onChange={(headers) => updateRequestAndSource({ headers })}
                 placeholder={{ key: 'Header', value: 'Value or /secret' }}
+                secrets={activeSecrets}
+                enableSecretTokens
+              />
+            )}
+
+            {httpRequest && activeSubTab === 'cookies' && (
+              <KeyValueEditor
+                items={httpRequest.cookies ?? []}
+                onChange={(cookies) => updateRequestAndSource({ cookies })}
+                placeholder={{ key: 'Cookie name', value: 'Cookie value' }}
                 secrets={activeSecrets}
                 enableSecretTokens
               />

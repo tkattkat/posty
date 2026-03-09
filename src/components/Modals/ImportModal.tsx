@@ -94,6 +94,7 @@ export function ImportModal({ onClose }: ImportModalProps) {
           url: req.url,
           headers: req.headers,
           params: req.params,
+          cookies: [],
           body: req.body
             ? { type: req.body.type as any, content: req.body.content }
             : { type: 'none', content: '' },

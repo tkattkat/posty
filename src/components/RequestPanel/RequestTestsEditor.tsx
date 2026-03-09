@@ -228,6 +228,7 @@ export function RequestTestsEditor({
                   >
                     <option value="json-path">JSON path</option>
                     <option value="header">Header</option>
+                    <option value="cookie">Cookie (Set-Cookie)</option>
                   </select>
                   <button
                     type="button"
@@ -243,7 +244,13 @@ export function RequestTestsEditor({
                   type="text"
                   value={extraction.path}
                   onChange={(e) => updateExtraction(extraction.id, { path: e.target.value })}
-                  placeholder={extraction.source === 'json-path' ? 'JSON path (e.g. data.token)' : 'Header name'}
+                  placeholder={
+                    extraction.source === 'json-path'
+                      ? 'JSON path (e.g. data.token)'
+                      : extraction.source === 'cookie'
+                        ? 'Cookie name (e.g. session_id)'
+                        : 'Header name'
+                  }
                   className="input-field text-sm font-mono"
                 />
                 <input

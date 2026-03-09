@@ -4,8 +4,25 @@ interface ParsedCurl {
   method: HttpMethod
   url: string
   headers: KeyValue[]
+  cookies: KeyValue[]
   body?: { type: 'json' | 'text' | 'form'; content: string }
   auth?: { type: 'bearer' | 'basic'; token?: string; username?: string; password?: string }
+}
+
+function parseCookieString(cookieString: string): KeyValue[] {
+  return cookieString
+    .split(';')
+    .map((pair) => pair.trim())
+    .filter(Boolean)
+    .map((pair) => {
+      const [key, ...valueParts] = pair.split('=')
+      return {
+        id: crypto.randomUUID(),
+        key: key.trim(),
+        value: valueParts.join('=').trim(),
+        enabled: true,
+      }
+    })
 }
 
 export function parseCurl(curlCommand: string): ParsedCurl | null {
@@ -27,6 +44,7 @@ export function parseCurl(curlCommand: string): ParsedCurl | null {
     method: 'GET',
     url: '',
     headers: [],
+    cookies: [],
   }
 
   // Tokenize while respecting quotes
@@ -89,6 +107,9 @@ export function parseCurl(curlCommand: string): ParsedCurl | null {
                 password,
               }
             }
+          } else if (key.toLowerCase() === 'cookie') {
+            // Parse Cookie header into individual cookies
+            result.cookies.push(...parseCookieString(value))
           } else {
             result.headers.push({
               id: crypto.randomUUID(),
@@ -98,6 +119,12 @@ export function parseCurl(curlCommand: string): ParsedCurl | null {
             })
           }
         }
+        i++
+      }
+    } else if (token === '-b' || token === '--cookie') {
+      // curl -b "name=value; name2=value2" or curl --cookie "name=value"
+      if (nextToken) {
+        result.cookies.push(...parseCookieString(nextToken))
         i++
       }
     } else if (token === '-d' || token === '--data' || token === '--data-raw' || token === '--data-binary') {
@@ -185,6 +212,7 @@ export function curlToHttpRequest(curlCommand: string): HttpRequest | null {
     url: parsed.url,
     headers: parsed.headers,
     params: extractQueryParams(parsed.url),
+    cookies: parsed.cookies,
     body: parsed.body || { type: 'none', content: '' },
     auth: parsed.auth ? { ...parsed.auth, type: parsed.auth.type } : undefined,
   }

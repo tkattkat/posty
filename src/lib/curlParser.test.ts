@@ -87,6 +87,40 @@ describe('Curl Parser', () => {
     it('returns null for curl without URL', () => {
       expect(parseCurl('curl -H "Test: value"')).toBeNull()
     })
+
+    it('parses cookies with -b flag', () => {
+      const result = parseCurl(`curl -b 'session=abc123; user=john' https://api.example.com`)
+      expect(result?.cookies).toHaveLength(2)
+      expect(result?.cookies[0].key).toBe('session')
+      expect(result?.cookies[0].value).toBe('abc123')
+      expect(result?.cookies[1].key).toBe('user')
+      expect(result?.cookies[1].value).toBe('john')
+    })
+
+    it('parses cookies with --cookie flag', () => {
+      const result = parseCurl(`curl --cookie 'token=xyz789' https://api.example.com`)
+      expect(result?.cookies).toHaveLength(1)
+      expect(result?.cookies[0].key).toBe('token')
+      expect(result?.cookies[0].value).toBe('xyz789')
+    })
+
+    it('parses Cookie header into cookies array', () => {
+      const result = parseCurl(`curl -H 'Cookie: auth=secret; theme=dark' https://api.example.com`)
+      expect(result?.cookies).toHaveLength(2)
+      expect(result?.cookies[0].key).toBe('auth')
+      expect(result?.cookies[0].value).toBe('secret')
+      expect(result?.cookies[1].key).toBe('theme')
+      expect(result?.cookies[1].value).toBe('dark')
+      // Cookie header should not be in headers array
+      expect(result?.headers).toHaveLength(0)
+    })
+
+    it('handles cookies with values containing equals sign', () => {
+      const result = parseCurl(`curl -b 'data=key=value' https://api.example.com`)
+      expect(result?.cookies).toHaveLength(1)
+      expect(result?.cookies[0].key).toBe('data')
+      expect(result?.cookies[0].value).toBe('key=value')
+    })
   })
 
   describe('curlToHttpRequest', () => {
@@ -115,6 +149,14 @@ describe('Curl Parser', () => {
 
     it('returns null for invalid curl', () => {
       expect(curlToHttpRequest('not curl')).toBeNull()
+    })
+
+    it('includes cookies in HttpRequest', () => {
+      const result = curlToHttpRequest(`curl -b 'session=abc123' https://api.example.com/dashboard`)
+      expect(result?.cookies).toHaveLength(1)
+      expect(result?.cookies[0].key).toBe('session')
+      expect(result?.cookies[0].value).toBe('abc123')
+      expect(result?.cookies[0].enabled).toBe(true)
     })
   })
 })
