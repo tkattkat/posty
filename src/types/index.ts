@@ -190,6 +190,7 @@ export interface Environment {
   name: string
   baseUrl?: string
   variables: KeyValue[]
+  secrets?: SecretVariable[]
   isActive: boolean
 }
 

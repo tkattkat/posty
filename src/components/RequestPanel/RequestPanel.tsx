@@ -56,7 +56,6 @@ function KeyValueEditor({
               type="checkbox"
               checked={item.enabled}
               onChange={(e) => updateItem(item.id, 'enabled', e.target.checked)}
-              className="w-4 h-4 rounded border-border bg-black/20 accent-accent"
             />
           </label>
           <input
@@ -225,8 +224,24 @@ export function RequestPanel() {
   const activeCollection =
     (activeTab?.sourceCollectionId ? findCollectionById(activeTab.sourceCollectionId) : null) ??
     (activeTab?.sourceRequestId ? findCollectionByRequestId(activeTab.sourceRequestId) : null)
-  const activeSecrets = useMemo(() => activeCollection?.secrets ?? [], [activeCollection])
   const activeEnvironment = getActiveEnvironment()
+
+  // Merge collection secrets with environment secrets (environment secrets take priority)
+  const activeSecrets = useMemo(() => {
+    const collectionSecrets = activeCollection?.secrets ?? []
+    const envSecrets = activeEnvironment?.secrets ?? []
+
+    // Create a map with collection secrets first, then override with env secrets
+    const secretsMap = new Map<string, SecretVariable>()
+    for (const secret of collectionSecrets) {
+      secretsMap.set(secret.name, secret)
+    }
+    for (const secret of envSecrets) {
+      secretsMap.set(secret.name, secret)
+    }
+
+    return Array.from(secretsMap.values())
+  }, [activeCollection, activeEnvironment])
 
   // Environment baseUrl takes priority over collection baseUrl
   const collectionBaseUrl =
@@ -438,56 +453,11 @@ export function RequestPanel() {
       {/* URL Bar */}
       <div className="px-4 py-3 flex-shrink-0 border-b border-border">
         <div className="flex gap-2 items-center">
-          {httpRequest && (
-            <div className="relative">
-              <button
-                onClick={() => setShowMethodDropdown(!showMethodDropdown)}
-                className="method-selector"
-                style={{ color: methodColor }}
-              >
-                {httpRequest.method}
-                <ChevronDown className="w-3.5 h-3.5 text-text-muted" />
-              </button>
-              {showMethodDropdown && (
-                <div className="absolute top-full left-0 mt-1 py-1 bg-surface-raised border border-border rounded shadow-lg z-50 min-w-[100px] animate-fade-in">
-                  {methods.map((method) => (
-                    <button
-                      key={method}
-                      onClick={() => {
-                        updateRequestAndSource({ method })
-                        setShowMethodDropdown(false)
-                      }}
-                      className="w-full px-3 py-1.5 text-left text-[13px] font-mono font-semibold hover:bg-bg-hover transition-colors"
-                      style={{ color: methodColors[method] }}
-                    >
-                      {method}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          <input
-            type="text"
-            value={'url' in activeRequest ? activeRequest.url : ''}
-            onChange={(e) => handleUrlChange(e.target.value)}
-            placeholder="Enter URL or paste curl command..."
-            className="flex-1 url-input font-mono text-[13px]"
-          />
-          <button
-            onClick={() => setShowCodeGen(true)}
-            disabled={!httpRequest?.url}
-            className="btn-ghost p-2.5 disabled:opacity-40 disabled:cursor-not-allowed"
-            title="Generate Code"
-          >
-            <Code className="w-5 h-5" />
-          </button>
-
           {/* Environment Selector */}
           <div className="relative flex items-center">
             <button
               onClick={() => setShowEnvDropdown(!showEnvDropdown)}
-              className={`h-[32px] flex items-center gap-1.5 px-2.5 rounded-md text-[13px] font-medium border transition-all duration-100 ${
+              className={`h-[36px] flex items-center gap-1.5 px-3 rounded-lg text-[13px] font-medium border transition-all duration-100 ${
                 activeEnvironment
                   ? 'bg-transparent text-green-500 border-green-500/30 hover:border-green-500/50'
                   : 'bg-transparent border-border text-text-secondary hover:border-border-hover hover:text-text-primary'
@@ -501,7 +471,7 @@ export function RequestPanel() {
               <ChevronDown className="w-3 h-3 flex-shrink-0 opacity-50" />
             </button>
             {showEnvDropdown && (
-              <div className="absolute top-full right-0 mt-1 py-1 bg-surface-raised border border-border rounded-lg shadow-lg z-50 min-w-[180px] animate-fade-in">
+              <div className="absolute top-full left-0 mt-1 py-1 bg-surface-raised border border-border rounded-lg shadow-lg z-50 min-w-[180px] animate-fade-in">
                 <button
                   onClick={() => {
                     setActiveEnvironment(null)
@@ -544,6 +514,44 @@ export function RequestPanel() {
             )}
           </div>
 
+          {httpRequest && (
+            <div className="relative">
+              <button
+                onClick={() => setShowMethodDropdown(!showMethodDropdown)}
+                className="method-selector"
+                style={{ color: methodColor }}
+              >
+                {httpRequest.method}
+                <ChevronDown className="w-3.5 h-3.5 text-text-muted" />
+              </button>
+              {showMethodDropdown && (
+                <div className="absolute top-full left-0 mt-1 py-1 bg-surface-raised border border-border rounded shadow-lg z-50 min-w-[100px] animate-fade-in">
+                  {methods.map((method) => (
+                    <button
+                      key={method}
+                      onClick={() => {
+                        updateRequestAndSource({ method })
+                        setShowMethodDropdown(false)
+                      }}
+                      className="w-full px-3 py-1.5 text-left text-[13px] font-mono font-semibold hover:bg-bg-hover transition-colors"
+                      style={{ color: methodColors[method] }}
+                    >
+                      {method}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <input
+            type="text"
+            value={'url' in activeRequest ? activeRequest.url : ''}
+            onChange={(e) => handleUrlChange(e.target.value)}
+            placeholder="Enter URL or paste curl command..."
+            className="flex-1 url-input font-mono text-[13px]"
+          />
+
           <button
             onClick={handleSendRequest}
             disabled={isLoading || !httpRequest?.url}
@@ -555,6 +563,15 @@ export function RequestPanel() {
               <Send className="w-4 h-4" />
             )}
             Send
+          </button>
+
+          <button
+            onClick={() => setShowCodeGen(true)}
+            disabled={!httpRequest?.url}
+            className="btn-ghost p-2.5 disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Generate Code"
+          >
+            <Code className="w-5 h-5" />
           </button>
         </div>
         {httpRequest && effectiveBaseUrl && httpRequest.url && !/^[A-Za-z][A-Za-z\d+.-]*:\/\//.test(httpRequest.url.trim()) && (

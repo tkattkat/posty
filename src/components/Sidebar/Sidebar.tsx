@@ -6,7 +6,7 @@ import { useRequestStore } from '../../stores/requestStore'
 import { ImportModal } from '../ImportModal/ImportModal'
 import { EditSpecModal } from '../Modals/EditSpecModal'
 import { DiffModal } from '../Modals/DiffModal'
-import type { Collection, HttpRequest, HistoryEntry, SecretVariable } from '../../types'
+import type { Collection, HttpRequest, HistoryEntry, SecretVariable, Environment } from '../../types'
 import { CollectionRunnerModal } from '../Runner/CollectionRunnerModal'
 import { getRunnableCollectionLabel } from '../../lib/runner'
 
@@ -431,10 +431,12 @@ function RequestContextMenu({
 
 function EnvironmentsPanel({
   onEditEnvironment,
+  onDeleteEnvironment,
 }: {
   onEditEnvironment: (envId: string | null) => void
+  onDeleteEnvironment: (env: Environment) => void
 }) {
-  const { environments, activeEnvironmentId, setActiveEnvironment, addEnvironment, deleteEnvironment } = useCollectionStore()
+  const { environments, activeEnvironmentId, setActiveEnvironment, addEnvironment } = useCollectionStore()
   const [isCreating, setIsCreating] = useState(false)
   const [newEnvName, setNewEnvName] = useState('')
 
@@ -510,15 +512,13 @@ function EnvironmentsPanel({
                     isActive ? 'bg-green-500' : 'bg-text-muted'
                   }`}
                 />
-                <span className="flex-1 text-[13px] text-text-secondary group-hover:text-text-primary truncate">
+                <span
+                  className="flex-1 text-[13px] text-text-secondary group-hover:text-text-primary truncate"
+                  title={env.baseUrl ? `${env.name}\n${env.baseUrl}` : env.name}
+                >
                   {env.name}
                 </span>
-                {env.baseUrl && (
-                  <span className="text-[10px] text-text-muted truncate max-w-[80px]" title={env.baseUrl}>
-                    {env.baseUrl.replace(/^https?:\/\//, '').split('/')[0]}
-                  </span>
-                )}
-                <span className="text-[10px] text-text-muted">
+                <span className="text-[10px] text-text-muted flex-shrink-0">
                   {env.variables.length} vars
                 </span>
                 <button
@@ -533,9 +533,7 @@ function EnvironmentsPanel({
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
-                    if (confirm(`Delete environment "${env.name}"?`)) {
-                      deleteEnvironment(env.id)
-                    }
+                    onDeleteEnvironment(env)
                   }}
                   className="opacity-0 group-hover:opacity-100 p-1 hover:bg-error/10 rounded transition-all"
                 >
@@ -557,7 +555,7 @@ function HistoryPanel({
   onCompare: (left: HistoryEntry, right: HistoryEntry) => void
   activeSourceRequestId?: string | null
 }) {
-  const { history } = useCollectionStore()
+  const { history, clearHistory } = useCollectionStore()
   const { addTab } = useRequestStore()
   const [compareMode, setCompareMode] = useState(false)
   const [selected, setSelected] = useState<HistoryEntry[]>([])
@@ -602,18 +600,25 @@ function HistoryPanel({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Compare button */}
-      <div className="px-2 pb-2">
+      {/* Actions */}
+      <div className="px-2 pb-2 flex gap-1">
         <button
           onClick={toggleCompareMode}
-          className={`w-full flex items-center justify-center gap-1.5 text-[12px] py-1.5 rounded transition-colors ${
+          className={`flex-1 flex items-center justify-center gap-1.5 text-[12px] py-1.5 rounded transition-colors ${
             compareMode
               ? 'bg-accent text-white'
               : 'btn-ghost'
           }`}
         >
           <GitCompare className="w-3.5 h-3.5" />
-          {compareMode ? `Select 2 to compare (${selected.length}/2)` : 'Compare'}
+          {compareMode ? `${selected.length}/2` : 'Compare'}
+        </button>
+        <button
+          onClick={() => clearHistory()}
+          className="btn-ghost flex items-center justify-center gap-1.5 text-[12px] py-1.5 px-3 rounded transition-colors hover:text-error hover:bg-error/10"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          Clear
         </button>
       </div>
 
@@ -704,6 +709,60 @@ function DeleteCollectionModal({
           </p>
           <p className="mt-2 text-[12px] text-text-secondary">
             This cannot be undone.
+          </p>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
+          <button onClick={onClose} className="btn-secondary">
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 rounded bg-error text-white hover:opacity-90 transition-opacity"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DeleteEnvironmentModal({
+  environment,
+  onClose,
+  onConfirm,
+}: {
+  environment: Environment
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div
+        className="relative w-full max-w-md glass-elevated rounded-lg flex flex-col animate-scale-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-error" />
+            <span className="text-[14px] font-medium">Delete Environment</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-bg-hover rounded transition-colors text-text-muted hover:text-text-secondary"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-4 py-4">
+          <p className="text-[13px] text-text-primary">
+            Delete environment "{environment.name}"?
+          </p>
+          <p className="mt-2 text-[12px] text-text-secondary">
+            This will remove all variables associated with this environment.
           </p>
         </div>
 
@@ -878,6 +937,12 @@ function EnvironmentModal({
       ? environment.variables
       : [{ id: crypto.randomUUID(), key: '', value: '', enabled: true }]
   )
+  const [secrets, setSecrets] = useState<Array<{ id: string; name: string; value: string }>>(
+    environment?.secrets?.length
+      ? environment.secrets
+      : [{ id: crypto.randomUUID(), name: '', value: '' }]
+  )
+  const [showSecretValues, setShowSecretValues] = useState(false)
   const [error, setError] = useState('')
 
   if (!environment) {
@@ -894,6 +959,18 @@ function EnvironmentModal({
 
   const removeVariable = (id: string) => {
     setVariables((current) => current.filter((v) => v.id !== id))
+  }
+
+  const updateSecret = (id: string, field: 'name' | 'value', value: string) => {
+    setSecrets((current) => current.map((s) => (s.id === id ? { ...s, [field]: value } : s)))
+  }
+
+  const addSecret = () => {
+    setSecrets((current) => [...current, { id: crypto.randomUUID(), name: '', value: '' }])
+  }
+
+  const removeSecret = (id: string) => {
+    setSecrets((current) => current.filter((s) => s.id !== id))
   }
 
   const handleSave = () => {
@@ -915,11 +992,24 @@ function EnvironmentModal({
       return
     }
 
+    const cleanedSecrets = secrets
+      .map((s) => ({ ...s, name: s.name.trim() }))
+      .filter((s) => s.name && s.value)
+
+    const secretNames = cleanedSecrets.map((s) => s.name)
+    const hasDuplicateSecrets = new Set(secretNames).size !== secretNames.length
+
+    if (hasDuplicateSecrets) {
+      setError('Secret names must be unique')
+      return
+    }
+
     setError('')
     updateEnvironment(environmentId, {
       name: trimmedName,
       baseUrl: baseUrl.trim() || undefined,
       variables: cleanedVariables,
+      secrets: cleanedSecrets,
     })
     onClose()
   }
@@ -987,7 +1077,6 @@ function EnvironmentModal({
                       type="checkbox"
                       checked={variable.enabled}
                       onChange={(e) => updateVariable(variable.id, 'enabled', e.target.checked)}
-                      className="w-4 h-4 rounded border-border bg-black/20 accent-accent"
                     />
                   </label>
                   <input
@@ -1020,6 +1109,59 @@ function EnvironmentModal({
             >
               <Plus className="w-3.5 h-3.5" />
               Add variable
+            </button>
+          </div>
+
+          {/* Secrets */}
+          <div className="mt-6 pt-4 border-t border-border">
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-[12px] text-text-secondary">Secrets</label>
+              <button
+                type="button"
+                onClick={() => setShowSecretValues((current) => !current)}
+                className="btn-ghost flex items-center gap-1.5 text-[11px] py-1 px-2"
+              >
+                {showSecretValues ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                {showSecretValues ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            <p className="text-[11px] text-text-muted mb-3">
+              Use <code className="px-1 py-0.5 bg-bg-tertiary rounded text-accent">/</code> in header values to insert secrets
+            </p>
+
+            <div className="space-y-2">
+              {secrets.map((secret) => (
+                <div key={secret.id} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={secret.name}
+                    onChange={(e) => updateSecret(secret.id, 'name', e.target.value)}
+                    placeholder="SECRET_NAME"
+                    className="min-w-0 flex-1 input-field font-mono text-sm"
+                  />
+                  <input
+                    type={showSecretValues ? 'text' : 'password'}
+                    value={secret.value}
+                    onChange={(e) => updateSecret(secret.id, 'value', e.target.value)}
+                    placeholder="Secret value"
+                    className="min-w-0 flex-1 input-field text-sm"
+                  />
+                  <button
+                    onClick={() => removeSecret(secret.id)}
+                    className="p-2 text-text-tertiary hover:text-error hover:bg-error/10 rounded-md transition-all"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={addSecret}
+              className="mt-3 flex items-center gap-1.5 text-xs text-text-secondary hover:text-accent transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add secret
             </button>
           </div>
 
@@ -1266,7 +1408,7 @@ function CollectionBaseUrlModal({
 
 export function Sidebar() {
   const { activePanel, setActivePanel, theme, setTheme } = useUIStore()
-  const { collections, addCollection, deleteCollection, moveCollection, updateCollection, addRequestToCollection, duplicateCollection, removeRequestFromCollection, duplicateRequest, updateRequestInCollection } = useCollectionStore()
+  const { collections, addCollection, deleteCollection, moveCollection, updateCollection, addRequestToCollection, duplicateCollection, removeRequestFromCollection, duplicateRequest, updateRequestInCollection, deleteEnvironment } = useCollectionStore()
   const { tabs, activeTabId, addTab } = useRequestStore()
   const [isCreating, setIsCreating] = useState(false)
   const [newCollectionName, setNewCollectionName] = useState('')
@@ -1279,6 +1421,7 @@ export function Sidebar() {
   const [addingFolderToCollection, setAddingFolderToCollection] = useState<Collection | null>(null)
   const [diffEntries, setDiffEntries] = useState<{ left: HistoryEntry; right: HistoryEntry } | null>(null)
   const [pendingDeleteCollection, setPendingDeleteCollection] = useState<Collection | null>(null)
+  const [pendingDeleteEnvironment, setPendingDeleteEnvironment] = useState<Environment | null>(null)
   const [pendingDragCollection, setPendingDragCollection] = useState<{ id: string; x: number; y: number } | null>(null)
   const [draggedCollectionId, setDraggedCollectionId] = useState<string | null>(null)
   const [dropTargetCollectionId, setDropTargetCollectionId] = useState<string | null>(null)
@@ -1569,6 +1712,7 @@ export function Sidebar() {
         {activePanel === 'environments' && (
           <EnvironmentsPanel
             onEditEnvironment={setEditingEnvironmentId}
+            onDeleteEnvironment={setPendingDeleteEnvironment}
           />
         )}
 
@@ -1583,9 +1727,11 @@ export function Sidebar() {
       {/* Footer */}
       <div className="p-3 border-t border-border">
         <div className="flex items-center justify-between">
-          <div className="flex gap-1.5">
+          <div className="flex gap-1.5 flex-wrap">
             <span className="kbd">⌘K</span>
             <span className="kbd">⌘T</span>
+            <span className="kbd">⌘W</span>
+            <span className="kbd">⌘S</span>
           </div>
           <button
             onClick={cycleTheme}
@@ -1629,6 +1775,17 @@ export function Sidebar() {
           collection={pendingDeleteCollection}
           onClose={() => setPendingDeleteCollection(null)}
           onConfirm={confirmDeleteCollection}
+        />
+      )}
+
+      {pendingDeleteEnvironment && (
+        <DeleteEnvironmentModal
+          environment={pendingDeleteEnvironment}
+          onClose={() => setPendingDeleteEnvironment(null)}
+          onConfirm={() => {
+            deleteEnvironment(pendingDeleteEnvironment.id)
+            setPendingDeleteEnvironment(null)
+          }}
         />
       )}
 

@@ -12,9 +12,9 @@
   --surface-raised: #1A1A1D;
 
   --text-primary: #FAFAFA;
-  --text-secondary: #A1A1AA;
-  --text-tertiary: #52525B;
-  --text-muted: #3F3F46;
+  --text-secondary: #D4D4D8;
+  --text-tertiary: #A1A1AA;
+  --text-muted: #71717A;
 
   --accent: #3B82F6;
   --accent-light: #60A5FA;
@@ -96,9 +96,9 @@
   --surface-raised: #1A1A1D;
 
   --text-primary: #FAFAFA;
-  --text-secondary: #A1A1AA;
-  --text-tertiary: #52525B;
-  --text-muted: #3F3F46;
+  --text-secondary: #D4D4D8;
+  --text-tertiary: #A1A1AA;
+  --text-muted: #71717A;
 
   --accent: #3B82F6;
   --accent-light: #60A5FA;
@@ -216,6 +216,46 @@ body {
 
 #root {
   display: flex;
+}
+
+/* Checkbox styling */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s ease;
+}
+
+input[type="checkbox"]:hover {
+  border-color: var(--text-muted);
+}
+
+input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 4px;
+  height: 8px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+input[type="checkbox"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-muted);
 }
 
 /* Sidebar panel */
@@ -340,7 +380,16 @@ body.is-resizing {
   user-select: none;
 }
 
-/* Scrollbar - minimal */
+/* Scrollbar - hidden by default, visible on hover */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+*:hover {
+  scrollbar-color: rgba(128, 128, 128, 0.3) transparent;
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -351,12 +400,16 @@ body.is-resizing {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: transparent;
   border-radius: 3px;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.15);
+*:hover::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.3);
+}
+
+*:hover::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.5);
 }
 
 /* Focus rings */
@@ -721,10 +774,10 @@ body.is-resizing {
 .url-input {
   background: var(--bg-primary);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 0 16px;
-  height: 44px;
-  font-size: 14px;
+  border-radius: 8px;
+  padding: 0 14px;
+  height: 36px;
+  font-size: 13px;
   color: var(--text-primary);
   transition: all 0.15s ease;
 }
@@ -740,10 +793,11 @@ body.is-resizing {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 14px;
+  height: 36px;
+  padding: 0 12px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   font-weight: 600;
   font-size: 13px;
   cursor: pointer;
@@ -755,32 +809,30 @@ body.is-resizing {
   border-color: rgba(255, 255, 255, 0.1);
 }
 
-/* Send button - Clerk style */
+/* Send button - Blue filled */
 .send-button {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  height: 32px;
-  padding: 0 12px;
-  background: transparent;
-  color: var(--text-secondary);
+  height: 36px;
+  padding: 0 14px;
+  background: var(--accent);
+  color: white;
   font-weight: 500;
   font-size: 13px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: none;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.12s ease;
 }
 
 .send-button:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-hover);
-  color: var(--text-primary);
+  background: var(--accent-light);
 }
 
 .send-button:active {
-  background: var(--bg-tertiary);
+  background: var(--accent);
 }
 
 /* Tab bar */
