@@ -10,7 +10,7 @@ A fast, lightweight, privacy-focused API client. No sign-up required.
 
 ## Why Posty?
 
-<img width="2912" height="1914" alt="image" src="https://github.com/user-attachments/assets/99db5d65-172d-4bed-b881-978911bccbb2" />
+<img width="2916" height="1874" alt="image" src="https://github.com/user-attachments/assets/87949eab-3dfc-4221-b230-0c97c3c5e3f6" />
 
 Postman became bloated. Insomnia requires accounts. You just want to test an API.
 
