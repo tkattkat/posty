@@ -176,22 +176,22 @@ export interface Collection {
   id: string
   name: string
   description?: string
-  baseUrl?: string
   requests: Request[]
   folders: Collection[]
   parentId?: string
   openApiSource?: OpenApiSource
   secrets?: SecretVariable[]
+  activeEnvironmentId?: string
 }
 
-// Environment
+// Environment (scoped to a collection)
 export interface Environment {
   id: string
   name: string
-  baseUrl?: string
+  collectionId: string
+  baseUrl: string
   variables: KeyValue[]
   secrets?: SecretVariable[]
-  isActive: boolean
 }
 
 // History Entry

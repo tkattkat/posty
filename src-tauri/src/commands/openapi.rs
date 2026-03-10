@@ -11,6 +11,8 @@ pub struct ImportedCollection {
     pub description: Option<String>,
     pub requests: Vec<ImportedRequest>,
     pub folders: Vec<ImportedCollection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -276,13 +278,6 @@ pub fn parse_openapi_spec(spec_content: String) -> Result<ImportedCollection, St
     let title = openapi.info.title.clone();
     let description = openapi.info.description.clone();
 
-    // Get base URL from servers
-    let base_url = openapi
-        .servers
-        .first()
-        .map(|s| s.url.clone())
-        .unwrap_or_else(|| "{{baseUrl}}".to_string());
-
     let mut requests: Vec<ImportedRequest> = Vec::new();
     let mut folders: HashMap<String, Vec<ImportedRequest>> = HashMap::new();
 
@@ -431,7 +426,7 @@ pub fn parse_openapi_spec(spec_content: String) -> Result<ImportedCollection, St
                         id: uuid::Uuid::new_v4().to_string(),
                         name: op_name,
                         method: method.to_string(),
-                        url: format!("{}{}", base_url, path),
+                        url: path.to_string(), // Use relative path, baseUrl comes from environment
                         headers,
                         params,
                         body,
@@ -457,15 +452,24 @@ pub fn parse_openapi_spec(spec_content: String) -> Result<ImportedCollection, St
             description: None,
             requests: reqs,
             folders: Vec::new(),
+            base_url: None,
         })
         .collect();
     folder_structs.sort_by(|a, b| a.name.cmp(&b.name));
+
+    // Extract server URL for environment creation
+    let server_base_url = openapi
+        .servers
+        .first()
+        .map(|s| s.url.clone())
+        .filter(|url| !url.contains("{{") && url.starts_with("http"));
 
     Ok(ImportedCollection {
         name: title,
         description,
         requests,
         folders: folder_structs,
+        base_url: server_base_url,
     })
 }
 

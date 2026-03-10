@@ -204,7 +204,7 @@ function CollectionContextMenu({
   y,
   onClose,
   onRunCollection,
-  onEditBaseUrl,
+  onManageEnvironments,
   onEditSpec,
   onEditSecrets,
   onRename,
@@ -218,7 +218,7 @@ function CollectionContextMenu({
   y: number
   onClose: () => void
   onRunCollection: (collection: Collection) => void
-  onEditBaseUrl: (collection: Collection) => void
+  onManageEnvironments: (collection: Collection) => void
   onEditSpec: (collection: Collection) => void
   onEditSecrets: (collection: Collection) => void
   onRename: (collection: Collection) => void
@@ -302,13 +302,13 @@ function CollectionContextMenu({
         <div className="border-t border-border" />
         <button
           onClick={() => {
-            onEditBaseUrl(collection)
+            onManageEnvironments(collection)
             onClose()
           }}
           className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
         >
           <Globe className="h-3.5 w-3.5" />
-          Base URL
+          Environments
         </button>
         <button
           onClick={() => {
@@ -432,118 +432,108 @@ function RequestContextMenu({
 function EnvironmentsPanel({
   onEditEnvironment,
   onDeleteEnvironment,
+  onAddEnvironment,
 }: {
-  onEditEnvironment: (envId: string | null) => void
+  onEditEnvironment: (envId: string) => void
   onDeleteEnvironment: (env: Environment) => void
+  onAddEnvironment: (collectionId: string) => void
 }) {
-  const { environments, activeEnvironmentId, setActiveEnvironment, addEnvironment } = useCollectionStore()
-  const [isCreating, setIsCreating] = useState(false)
-  const [newEnvName, setNewEnvName] = useState('')
+  const { collections, setActiveEnvironment, getEnvironmentsForCollection } = useCollectionStore()
 
-  const handleCreate = () => {
-    if (newEnvName.trim()) {
-      addEnvironment(newEnvName.trim())
-      setNewEnvName('')
-      setIsCreating(false)
-    }
+  // Get top-level collections only
+  const topLevelCollections = collections
+
+  if (topLevelCollections.length === 0) {
+    return (
+      <div className="empty-state">
+        <div className="empty-state-icon">
+          <Globe className="w-5 h-5" />
+        </div>
+        <p className="empty-state-title">No collections</p>
+        <p className="empty-state-desc">Import a collection to manage environments</p>
+      </div>
+    )
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Add Environment */}
-      <div className="px-2 pb-2">
-        {isCreating ? (
-          <div className="p-3 bg-bg-secondary rounded border border-border animate-fade-in">
-            <input
-              type="text"
-              value={newEnvName}
-              onChange={(e) => setNewEnvName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleCreate()
-                if (e.key === 'Escape') setIsCreating(false)
-              }}
-              placeholder="Environment name"
-              className="input-field text-[13px] mb-2"
-              autoFocus
-            />
-            <div className="flex gap-2">
-              <button onClick={handleCreate} className="btn-primary flex-1 text-[12px] py-1.5">
-                Create
-              </button>
-              <button onClick={() => setIsCreating(false)} className="btn-secondary flex-1 text-[12px] py-1.5">
-                Cancel
+    <div className="flex flex-col h-full overflow-auto py-1">
+      {topLevelCollections.map((collection) => {
+        const collectionEnvs = getEnvironmentsForCollection(collection.id)
+
+        return (
+          <div key={collection.id} className="mb-4">
+            {/* Collection Header */}
+            <div className="flex items-center gap-2 px-3 py-1.5">
+              <Folder className="w-3.5 h-3.5 text-text-tertiary" />
+              <span className="flex-1 text-[12px] font-medium text-text-secondary truncate">
+                {collection.name}
+              </span>
+              <button
+                onClick={() => onAddEnvironment(collection.id)}
+                className="p-1 hover:bg-bg-hover rounded transition-colors"
+                title="Add environment"
+              >
+                <Plus className="w-3 h-3 text-text-muted" />
               </button>
             </div>
-          </div>
-        ) : (
-          <button
-            onClick={() => setIsCreating(true)}
-            className="w-full btn-ghost flex items-center justify-center gap-1.5 text-[12px]"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            New Environment
-          </button>
-        )}
-      </div>
 
-      {/* Environments List */}
-      {environments.length === 0 && !isCreating ? (
-        <div className="empty-state">
-          <div className="empty-state-icon">
-            <Globe className="w-5 h-5" />
-          </div>
-          <p className="empty-state-title">No environments</p>
-          <p className="empty-state-desc">Create an environment to manage variables</p>
-        </div>
-      ) : (
-        <div className="flex-1 overflow-auto py-1 space-y-1">
-          {environments.map((env) => {
-            const isActive = env.id === activeEnvironmentId
-            return (
-              <div
-                key={env.id}
-                className={`group flex items-center gap-2 px-3 py-2 rounded cursor-pointer transition-colors ${
-                  isActive ? 'bg-accent/12 ring-1 ring-accent/20' : 'hover:bg-bg-hover'
-                }`}
-                onClick={() => setActiveEnvironment(isActive ? null : env.id)}
-              >
-                <div
-                  className={`w-2 h-2 rounded-full transition-colors ${
-                    isActive ? 'bg-green-500' : 'bg-text-muted'
-                  }`}
-                />
-                <span
-                  className="flex-1 text-[13px] text-text-secondary group-hover:text-text-primary truncate"
-                  title={env.baseUrl ? `${env.name}\n${env.baseUrl}` : env.name}
-                >
-                  {env.name}
-                </span>
-                <span className="text-[10px] text-text-muted flex-shrink-0">
-                  {env.variables.length} vars
-                </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onEditEnvironment(env.id)
-                  }}
-                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-bg-tertiary rounded transition-all"
-                >
-                  <Pencil className="w-3 h-3 text-text-muted" />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onDeleteEnvironment(env)
-                  }}
-                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-error/10 rounded transition-all"
-                >
-                  <Trash2 className="w-3 h-3 text-error" />
-                </button>
+            {/* Environments for this collection */}
+            {collectionEnvs.length === 0 ? (
+              <div className="px-3 py-2 text-[11px] text-text-muted italic">
+                No environments
               </div>
-            )
-          })}
-        </div>
-      )}
+            ) : (
+              <div className="space-y-0.5">
+                {collectionEnvs.map((env) => {
+                  const isActiveEnv = env.id === collection.activeEnvironmentId
+                  return (
+                    <div
+                      key={env.id}
+                      className={`group flex items-center gap-2 px-3 py-1.5 ml-2 rounded cursor-pointer transition-colors ${
+                        isActiveEnv ? 'bg-accent/12 ring-1 ring-accent/20' : 'hover:bg-bg-hover'
+                      }`}
+                      onClick={() => setActiveEnvironment(collection.id, isActiveEnv ? null : env.id)}
+                    >
+                      <div
+                        className={`w-2 h-2 rounded-full transition-colors flex-shrink-0 ${
+                          isActiveEnv ? 'bg-green-500' : 'bg-text-muted'
+                        }`}
+                      />
+                      <span
+                        className="flex-1 text-[12px] text-text-secondary group-hover:text-text-primary truncate"
+                        title={`${env.name}\n${env.baseUrl}`}
+                      >
+                        {env.name}
+                      </span>
+                      <span className="text-[10px] text-text-muted flex-shrink-0 font-mono truncate max-w-20" title={env.baseUrl}>
+                        {env.baseUrl.replace(/^https?:\/\//, '').split('/')[0]}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onEditEnvironment(env.id)
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-bg-tertiary rounded transition-all"
+                      >
+                        <Pencil className="w-3 h-3 text-text-muted" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onDeleteEnvironment(env)
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-error/10 rounded transition-all"
+                      >
+                        <Trash2 className="w-3 h-3 text-error" />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -922,13 +912,17 @@ function CollectionSecretsModal({
 
 function EnvironmentModal({
   environmentId,
+  collectionId,
   onClose,
 }: {
-  environmentId: string
+  environmentId?: string
+  collectionId?: string
   onClose: () => void
 }) {
-  const { environments, updateEnvironment } = useCollectionStore()
-  const environment = environments.find((env) => env.id === environmentId)
+  const { environments, updateEnvironment, addEnvironment, findCollectionById } = useCollectionStore()
+  const environment = environmentId ? environments.find((env) => env.id === environmentId) : null
+  const isCreating = !environmentId && collectionId
+  const collection = collectionId ? findCollectionById(collectionId) : null
 
   const [name, setName] = useState(environment?.name ?? '')
   const [baseUrl, setBaseUrl] = useState(environment?.baseUrl ?? '')
@@ -945,7 +939,7 @@ function EnvironmentModal({
   const [showSecretValues, setShowSecretValues] = useState(false)
   const [error, setError] = useState('')
 
-  if (!environment) {
+  if (!environment && !isCreating) {
     return null
   }
 
@@ -975,8 +969,15 @@ function EnvironmentModal({
 
   const handleSave = () => {
     const trimmedName = name.trim()
+    const trimmedBaseUrl = baseUrl.trim()
+
     if (!trimmedName) {
       setError('Environment name is required')
+      return
+    }
+
+    if (!trimmedBaseUrl) {
+      setError('Base URL is required')
       return
     }
 
@@ -1005,12 +1006,24 @@ function EnvironmentModal({
     }
 
     setError('')
-    updateEnvironment(environmentId, {
-      name: trimmedName,
-      baseUrl: baseUrl.trim() || undefined,
-      variables: cleanedVariables,
-      secrets: cleanedSecrets,
-    })
+
+    if (isCreating && collectionId) {
+      // Create new environment
+      addEnvironment(collectionId, trimmedName, trimmedBaseUrl)
+      // Auto-activate it if it's the first one
+      const existingEnvs = environments.filter((e) => e.collectionId === collectionId)
+      if (existingEnvs.length === 0) {
+        // Will need to activate after creation - for now just close
+      }
+    } else if (environmentId) {
+      // Update existing
+      updateEnvironment(environmentId, {
+        name: trimmedName,
+        baseUrl: trimmedBaseUrl,
+        variables: cleanedVariables,
+        secrets: cleanedSecrets,
+      })
+    }
     onClose()
   }
 
@@ -1024,7 +1037,9 @@ function EnvironmentModal({
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
             <Globe className="w-4 h-4 text-accent" />
-            <span className="text-[14px] font-medium">Edit Environment</span>
+            <span className="text-[14px] font-medium">
+              {isCreating ? `New Environment${collection ? ` for ${collection.name}` : ''}` : 'Edit Environment'}
+            </span>
           </div>
           <button
             onClick={onClose}
@@ -1049,7 +1064,7 @@ function EnvironmentModal({
 
           {/* Base URL */}
           <div className="mb-4">
-            <label className="block text-[12px] text-text-secondary mb-1.5">Base URL (optional)</label>
+            <label className="block text-[12px] text-text-secondary mb-1.5">Base URL</label>
             <input
               type="text"
               value={baseUrl}
@@ -1058,7 +1073,7 @@ function EnvironmentModal({
               className="w-full input-field text-[13px] font-mono"
             />
             <p className="mt-1 text-[11px] text-text-muted">
-              Overrides collection base URL when this environment is active
+              Requests will be prefixed with this URL when this environment is active
             </p>
           </div>
 
@@ -1179,7 +1194,7 @@ function EnvironmentModal({
           </button>
           <button onClick={handleSave} className="btn-primary flex items-center gap-2">
             <Save className="w-4 h-4" />
-            Save Environment
+            {isCreating ? 'Create Environment' : 'Save Environment'}
           </button>
         </div>
       </div>
@@ -1334,77 +1349,6 @@ function AddFolderModal({
   )
 }
 
-function CollectionBaseUrlModal({
-  collection,
-  onClose,
-  onSave,
-}: {
-  collection: Collection
-  onClose: () => void
-  onSave: (baseUrl: string | undefined) => void
-}) {
-  const [draftBaseUrl, setDraftBaseUrl] = useState(collection.baseUrl ?? '')
-
-  const handleSave = () => {
-    const trimmedBaseUrl = draftBaseUrl.trim()
-    onSave(trimmedBaseUrl || undefined)
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <div
-        className="relative w-full max-w-xl glass-elevated rounded-lg flex flex-col animate-scale-in"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <div className="flex items-center gap-2">
-            <Globe className="w-4 h-4 text-accent" />
-            <span className="text-[14px] font-medium">Collection Base URL</span>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 hover:bg-bg-hover rounded transition-colors text-text-muted hover:text-text-secondary"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="p-4">
-          <p className="mb-3 text-[12px] text-text-secondary">
-            Relative request URLs in "{collection.name}" will resolve against this base URL. Absolute request URLs still take precedence.
-          </p>
-          <input
-            type="text"
-            value={draftBaseUrl}
-            onChange={(event) => setDraftBaseUrl(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                handleSave()
-              }
-            }}
-            placeholder="https://api.example.com/v1"
-            className="input-field text-[13px] font-mono"
-            autoFocus
-          />
-          <p className="mt-2 text-[11px] text-text-muted">
-            Leave blank to disable collection-level base URL resolution.
-          </p>
-        </div>
-
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
-          <button onClick={onClose} className="btn-secondary">
-            Cancel
-          </button>
-          <button onClick={handleSave} className="btn-primary flex items-center gap-2">
-            <Save className="w-4 h-4" />
-            Save Base URL
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 export function Sidebar() {
   const { activePanel, setActivePanel, theme, setTheme } = useUIStore()
@@ -1414,8 +1358,7 @@ export function Sidebar() {
   const [newCollectionName, setNewCollectionName] = useState('')
   const [showImportModal, setShowImportModal] = useState(false)
   const [editingCollection, setEditingCollection] = useState<Collection | null>(null)
-  const [editingBaseUrlCollection, setEditingBaseUrlCollection] = useState<Collection | null>(null)
-  const [editingSecretsCollection, setEditingSecretsCollection] = useState<Collection | null>(null)
+    const [editingSecretsCollection, setEditingSecretsCollection] = useState<Collection | null>(null)
   const [renamingCollection, setRenamingCollection] = useState<Collection | null>(null)
   const [renamingRequest, setRenamingRequest] = useState<{ request: HttpRequest; collectionId: string } | null>(null)
   const [addingFolderToCollection, setAddingFolderToCollection] = useState<Collection | null>(null)
@@ -1430,6 +1373,7 @@ export function Sidebar() {
   const [requestContextMenu, setRequestContextMenu] = useState<{ request: HttpRequest; collectionId: string; x: number; y: number } | null>(null)
   const [runnerCollection, setRunnerCollection] = useState<Collection | null>(null)
   const [editingEnvironmentId, setEditingEnvironmentId] = useState<string | null>(null)
+  const [creatingEnvironmentForCollectionId, setCreatingEnvironmentForCollectionId] = useState<string | null>(null)
   const suppressNextCollectionToggleRef = useRef(false)
 
   const cycleTheme = () => {
@@ -1470,10 +1414,7 @@ export function Sidebar() {
     setEditingSecretsCollection(null)
   }
 
-  const handleSaveBaseUrl = (collectionId: string, baseUrl: string | undefined) => {
-    updateCollection(collectionId, { baseUrl })
-    setEditingBaseUrlCollection(null)
-  }
+  // Base URL is now managed through environments, not directly on collections
 
   const handleRename = (collectionId: string, newName: string) => {
     updateCollection(collectionId, { name: newName })
@@ -1713,6 +1654,7 @@ export function Sidebar() {
           <EnvironmentsPanel
             onEditEnvironment={setEditingEnvironmentId}
             onDeleteEnvironment={setPendingDeleteEnvironment}
+            onAddEnvironment={setCreatingEnvironmentForCollectionId}
           />
         )}
 
@@ -1752,14 +1694,6 @@ export function Sidebar() {
         <EditSpecModal
           collection={editingCollection}
           onClose={() => setEditingCollection(null)}
-        />
-      )}
-
-      {editingBaseUrlCollection && (
-        <CollectionBaseUrlModal
-          collection={editingBaseUrlCollection}
-          onClose={() => setEditingBaseUrlCollection(null)}
-          onSave={(baseUrl) => handleSaveBaseUrl(editingBaseUrlCollection.id, baseUrl)}
         />
       )}
 
@@ -1814,7 +1748,10 @@ export function Sidebar() {
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
           onRunCollection={setRunnerCollection}
-          onEditBaseUrl={setEditingBaseUrlCollection}
+          onManageEnvironments={(col) => {
+            setActivePanel('environments')
+            setCreatingEnvironmentForCollectionId(col.id)
+          }}
           onEditSpec={setEditingCollection}
           onEditSecrets={setEditingSecretsCollection}
           onRename={setRenamingCollection}
@@ -1854,10 +1791,14 @@ export function Sidebar() {
         />
       )}
 
-      {editingEnvironmentId && (
+      {(editingEnvironmentId || creatingEnvironmentForCollectionId) && (
         <EnvironmentModal
-          environmentId={editingEnvironmentId}
-          onClose={() => setEditingEnvironmentId(null)}
+          environmentId={editingEnvironmentId ?? undefined}
+          collectionId={creatingEnvironmentForCollectionId ?? undefined}
+          onClose={() => {
+            setEditingEnvironmentId(null)
+            setCreatingEnvironmentForCollectionId(null)
+          }}
         />
       )}
 

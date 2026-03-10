@@ -5,12 +5,11 @@ import type { Collection, Request, Environment, HistoryEntry, OpenApiSource } fr
 interface CollectionStore {
   collections: Collection[]
   environments: Environment[]
-  activeEnvironmentId: string | null
   history: HistoryEntry[]
 
   // Collection actions
   addCollection: (name: string, parentId?: string) => void
-  importCollection: (collection: Collection, source?: OpenApiSource) => void
+  importCollection: (collection: Collection, source?: OpenApiSource, baseUrl?: string) => void
   updateCollection: (id: string, updates: Partial<Collection>) => void
   updateRequestInCollection: (requestId: string, updates: Partial<Request>) => void
   deleteCollection: (id: string) => void
@@ -25,11 +24,12 @@ interface CollectionStore {
   ) => void
 
   // Environment actions
-  addEnvironment: (name: string) => void
+  addEnvironment: (collectionId: string, name: string, baseUrl: string) => void
   updateEnvironment: (id: string, updates: Partial<Environment>) => void
   deleteEnvironment: (id: string) => void
-  setActiveEnvironment: (id: string | null) => void
-  getActiveEnvironment: () => Environment | null
+  setActiveEnvironment: (collectionId: string, environmentId: string | null) => void
+  getEnvironmentsForCollection: (collectionId: string) => Environment[]
+  getActiveEnvironmentForCollection: (collectionId: string) => Environment | null
 
   // History actions
   addToHistory: (entry: Omit<HistoryEntry, 'id'>) => void
@@ -46,25 +46,9 @@ interface CollectionStore {
   // Helpers
   findCollectionById: (id: string) => Collection | null
   findCollectionByRequestId: (requestId: string) => Collection | null
-  getEffectiveBaseUrlForCollection: (collectionId: string) => string | undefined
-  getEffectiveBaseUrlForRequest: (requestId: string) => string | undefined
+  findRootCollectionForRequest: (requestId: string) => Collection | null
+  getActiveEnvironmentForRequest: (requestId: string) => Environment | null
   getAllRequests: () => Request[]
-}
-
-function findCollectionPathById(collections: Collection[], targetId: string, ancestors: Collection[] = []): Collection[] | null {
-  for (const collection of collections) {
-    const nextAncestors = [...ancestors, collection]
-    if (collection.id === targetId) {
-      return nextAncestors
-    }
-
-    const nestedPath = findCollectionPathById(collection.folders, targetId, nextAncestors)
-    if (nestedPath) {
-      return nestedPath
-    }
-  }
-
-  return null
 }
 
 function findCollectionPathForRequest(collections: Collection[], requestId: string, ancestors: Collection[] = []): Collection[] | null {
@@ -83,19 +67,11 @@ function findCollectionPathForRequest(collections: Collection[], requestId: stri
   return null
 }
 
-function resolveEffectiveBaseUrl(collectionPath: Collection[] | null): string | undefined {
-  if (!collectionPath) {
-    return undefined
+function findRootCollection(collectionPath: Collection[] | null): Collection | null {
+  if (!collectionPath || collectionPath.length === 0) {
+    return null
   }
-
-  for (let index = collectionPath.length - 1; index >= 0; index -= 1) {
-    const baseUrl = collectionPath[index].baseUrl?.trim()
-    if (baseUrl) {
-      return baseUrl
-    }
-  }
-
-  return undefined
+  return collectionPath[0]
 }
 
 export const useCollectionStore = create<CollectionStore>()(
@@ -103,7 +79,6 @@ export const useCollectionStore = create<CollectionStore>()(
     (set, get) => ({
   collections: [],
   environments: [],
-  activeEnvironmentId: null,
   history: [],
 
   // Collection actions
@@ -132,11 +107,28 @@ export const useCollectionStore = create<CollectionStore>()(
     })
   },
 
-  importCollection: (collection, source) => {
+  importCollection: (collection, source, baseUrl) => {
     const collectionWithSource = source
       ? { ...collection, openApiSource: { ...source, lastUpdated: Date.now() } }
       : collection
-    set((state) => ({ collections: [...state.collections, collectionWithSource] }))
+
+    // Auto-create Production environment if baseUrl provided
+    const productionEnv: Environment | null = baseUrl ? {
+      id: crypto.randomUUID(),
+      name: 'Production',
+      collectionId: collection.id,
+      baseUrl,
+      variables: [],
+    } : null
+
+    const collectionWithActiveEnv = productionEnv
+      ? { ...collectionWithSource, activeEnvironmentId: productionEnv.id }
+      : collectionWithSource
+
+    set((state) => ({
+      collections: [...state.collections, collectionWithActiveEnv],
+      environments: productionEnv ? [...state.environments, productionEnv] : state.environments,
+    }))
   },
 
   updateCollection: (id, updates) => {
@@ -348,12 +340,13 @@ export const useCollectionStore = create<CollectionStore>()(
   },
 
   // Environment actions
-  addEnvironment: (name) => {
+  addEnvironment: (collectionId, name, baseUrl) => {
     const newEnv: Environment = {
       id: crypto.randomUUID(),
       name,
+      collectionId,
+      baseUrl,
       variables: [],
-      isActive: false,
     }
     set((state) => ({ environments: [...state.environments, newEnv] }))
   },
@@ -367,25 +360,48 @@ export const useCollectionStore = create<CollectionStore>()(
   },
 
   deleteEnvironment: (id) => {
-    set((state) => ({
-      environments: state.environments.filter((env) => env.id !== id),
-      activeEnvironmentId: state.activeEnvironmentId === id ? null : state.activeEnvironmentId,
-    }))
+    set((state) => {
+      const envToDelete = state.environments.find((env) => env.id === id)
+      if (!envToDelete) return state
+
+      // Clear activeEnvironmentId on collection if this was the active one
+      const updateCollections = (cols: Collection[]): Collection[] =>
+        cols.map((col) => {
+          const updated = col.activeEnvironmentId === id
+            ? { ...col, activeEnvironmentId: undefined }
+            : col
+          return { ...updated, folders: updateCollections(col.folders) }
+        })
+
+      return {
+        environments: state.environments.filter((env) => env.id !== id),
+        collections: updateCollections(state.collections),
+      }
+    })
   },
 
-  setActiveEnvironment: (id) => {
-    set((state) => ({
-      activeEnvironmentId: id,
-      environments: state.environments.map((env) => ({
-        ...env,
-        isActive: env.id === id,
-      })),
-    }))
+  setActiveEnvironment: (collectionId, environmentId) => {
+    set((state) => {
+      const updateCollections = (cols: Collection[]): Collection[] =>
+        cols.map((col) =>
+          col.id === collectionId
+            ? { ...col, activeEnvironmentId: environmentId ?? undefined }
+            : { ...col, folders: updateCollections(col.folders) }
+        )
+      return { collections: updateCollections(state.collections) }
+    })
   },
 
-  getActiveEnvironment: () => {
-    const { environments, activeEnvironmentId } = get()
-    return environments.find((env) => env.id === activeEnvironmentId) || null
+  getEnvironmentsForCollection: (collectionId) => {
+    const { environments } = get()
+    return environments.filter((env) => env.collectionId === collectionId)
+  },
+
+  getActiveEnvironmentForCollection: (collectionId) => {
+    const { findCollectionById, environments } = get()
+    const collection = findCollectionById(collectionId)
+    if (!collection?.activeEnvironmentId) return null
+    return environments.find((env) => env.id === collection.activeEnvironmentId) || null
   },
 
   // History actions
@@ -444,14 +460,16 @@ export const useCollectionStore = create<CollectionStore>()(
     return findInCollections(collections)
   },
 
-  getEffectiveBaseUrlForCollection: (collectionId) => {
+  findRootCollectionForRequest: (requestId) => {
     const { collections } = get()
-    return resolveEffectiveBaseUrl(findCollectionPathById(collections, collectionId))
+    return findRootCollection(findCollectionPathForRequest(collections, requestId))
   },
 
-  getEffectiveBaseUrlForRequest: (requestId) => {
-    const { collections } = get()
-    return resolveEffectiveBaseUrl(findCollectionPathForRequest(collections, requestId))
+  getActiveEnvironmentForRequest: (requestId) => {
+    const { findRootCollectionForRequest, environments } = get()
+    const rootCollection = findRootCollectionForRequest(requestId)
+    if (!rootCollection?.activeEnvironmentId) return null
+    return environments.find((env) => env.id === rootCollection.activeEnvironmentId) || null
   },
 
   getAllRequests: () => {
@@ -472,7 +490,6 @@ export const useCollectionStore = create<CollectionStore>()(
       partialize: (state) => ({
         collections: state.collections,
         environments: state.environments,
-        activeEnvironmentId: state.activeEnvironmentId,
         history: state.history,
       }),
     }

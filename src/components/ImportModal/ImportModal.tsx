@@ -87,7 +87,8 @@ export function ImportModal({ onClose }: ImportModalProps) {
             ? { type: 'url', url: url.trim() }
             : { type: 'text', spec: specContent.trim() }
 
-      importCollection(collection, source)
+      // Pass baseUrl from OpenAPI spec for auto-creating Production environment
+      importCollection(collection, source, result.base_url)
 
       const requestCount = countImportedRequests(result)
       setSuccess(`Imported "${result.name}" with ${requestCount} requests`)

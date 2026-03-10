@@ -22,6 +22,7 @@ export interface ImportedCollection {
   description: string | null
   requests: ImportedRequest[]
   folders: ImportedCollection[]
+  base_url?: string
 }
 
 export interface PickedOpenApiFile {

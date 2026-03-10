@@ -11,6 +11,7 @@ import { executeHttpRequest } from './requestExecution'
 
 export interface RunCollectionOptions {
   collection: Collection
+  baseUrl?: string
   secrets?: SecretVariable[]
   stopOnFail?: boolean
   onRunStart?: (run: RunnerResult) => void
@@ -35,19 +36,19 @@ function flattenCollectionRequests(collection: Collection): HttpRequest[] {
 
 function flattenRunnableRequestEntries(
   collection: Collection,
-  inheritedBaseUrl?: string
+  baseUrl?: string
 ): RunnableRequestEntry[] {
-  const effectiveBaseUrl = collection.baseUrl?.trim() || inheritedBaseUrl
+  // baseUrl now comes from the active environment, passed in from the caller
   const requests = collection.requests
     .filter((request): request is HttpRequest => request.type === 'http')
     .map((request) => ({
       request,
-      effectiveBaseUrl,
+      effectiveBaseUrl: baseUrl,
     }))
 
   return [
     ...requests,
-    ...collection.folders.flatMap((folder) => flattenRunnableRequestEntries(folder, effectiveBaseUrl)),
+    ...collection.folders.flatMap((folder) => flattenRunnableRequestEntries(folder, baseUrl)),
   ]
 }
 
@@ -57,7 +58,7 @@ export function getCollectionHttpRequests(collection: Collection): HttpRequest[]
 
 export async function runCollectionRequests(options: RunCollectionOptions): Promise<RunnerResult> {
   const stopOnFail = options.stopOnFail ?? true
-  const requestEntries = flattenRunnableRequestEntries(options.collection)
+  const requestEntries = flattenRunnableRequestEntries(options.collection, options.baseUrl)
   const steps: RunnerStepResult[] = requestEntries.map(({ request }) => ({
     requestId: request.id,
     requestName: request.name,

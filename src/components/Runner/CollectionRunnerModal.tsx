@@ -32,7 +32,8 @@ export function CollectionRunnerModal({
   collection: Collection
   onClose: () => void
 }) {
-  const { addToHistory } = useCollectionStore()
+  const { addToHistory, getActiveEnvironmentForCollection } = useCollectionStore()
+  const activeEnvironment = getActiveEnvironmentForCollection(collection.id)
   const {
     activeRun,
     runtimeVariables,
@@ -54,6 +55,7 @@ export function CollectionRunnerModal({
   const handleRun = async () => {
     await runCollectionRequests({
       collection,
+      baseUrl: activeEnvironment?.baseUrl,
       secrets: collection.secrets ?? [],
       stopOnFail,
       onRunStart: startRun,

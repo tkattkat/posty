@@ -294,7 +294,7 @@ export function RequestPanel() {
     tabExecutionResults,
   } = useRequestStore()
   const executionResult = activeTabId ? tabExecutionResults[activeTabId] ?? null : null
-  const { addToHistory, findCollectionById, findCollectionByRequestId, getEffectiveBaseUrlForCollection, getEffectiveBaseUrlForRequest, updateRequestInCollection, getActiveEnvironment, environments, setActiveEnvironment, activeEnvironmentId } = useCollectionStore()
+  const { addToHistory, findCollectionById, findCollectionByRequestId, findRootCollectionForRequest, getActiveEnvironmentForCollection, getEnvironmentsForCollection, updateRequestInCollection, setActiveEnvironment } = useCollectionStore()
   const [activeSubTab, setActiveSubTab] = useState<'params' | 'headers' | 'cookies' | 'body' | 'auth' | 'tests'>('params')
   const [showMethodDropdown, setShowMethodDropdown] = useState(false)
   const [showEnvDropdown, setShowEnvDropdown] = useState(false)
@@ -307,7 +307,16 @@ export function RequestPanel() {
   const activeCollection =
     (activeTab?.sourceCollectionId ? findCollectionById(activeTab.sourceCollectionId) : null) ??
     (activeTab?.sourceRequestId ? findCollectionByRequestId(activeTab.sourceRequestId) : null)
-  const activeEnvironment = getActiveEnvironment()
+  // Find root collection for environment lookup
+  const rootCollection = activeTab?.sourceRequestId
+    ? findRootCollectionForRequest(activeTab.sourceRequestId)
+    : (activeTab?.sourceCollectionId ? findCollectionById(activeTab.sourceCollectionId) : null)
+  const activeEnvironment = rootCollection
+    ? getActiveEnvironmentForCollection(rootCollection.id)
+    : null
+  const collectionEnvironments = rootCollection
+    ? getEnvironmentsForCollection(rootCollection.id)
+    : []
 
   // Merge collection secrets with environment secrets (environment secrets take priority)
   const activeSecrets = useMemo(() => {
@@ -326,17 +335,14 @@ export function RequestPanel() {
     return Array.from(secretsMap.values())
   }, [activeCollection, activeEnvironment])
 
-  // Environment baseUrl takes priority over collection baseUrl
-  const collectionBaseUrl =
-    (activeCollection?.id ? getEffectiveBaseUrlForCollection(activeCollection.id) : undefined) ??
-    (activeTab?.sourceRequestId ? getEffectiveBaseUrlForRequest(activeTab.sourceRequestId) : undefined)
-  const effectiveBaseUrl = activeEnvironment?.baseUrl || collectionBaseUrl
+  // Environment baseUrl (environments now hold the baseUrl, no more collection-level baseUrl)
+  const effectiveBaseUrl = activeEnvironment?.baseUrl || ''
 
   // Convert environment variables to Record<string, string>
-  const envVariables = useMemo(() => {
+  const envVariables = useMemo((): Record<string, string> => {
     if (!activeEnvironment?.variables) return {}
     return activeEnvironment.variables
-      .filter(v => v.enabled && v.key)
+      .filter((v): v is typeof v & { key: string } => v.enabled && !!v.key)
       .reduce<Record<string, string>>((acc, v) => {
         acc[v.key] = v.value
         return acc
@@ -553,33 +559,33 @@ export function RequestPanel() {
               </span>
               <ChevronDown className="w-3 h-3 flex-shrink-0 opacity-50" />
             </button>
-            {showEnvDropdown && (
+            {showEnvDropdown && rootCollection && (
               <div className="absolute top-full left-0 mt-1 py-1 bg-surface-raised border border-border rounded-lg shadow-lg z-50 min-w-[180px] animate-fade-in">
                 <button
                   onClick={() => {
-                    setActiveEnvironment(null)
+                    setActiveEnvironment(rootCollection.id, null)
                     setShowEnvDropdown(false)
                   }}
                   className={`w-full px-3 py-2 text-left text-[12px] hover:bg-bg-hover transition-colors flex items-center gap-2.5 ${
-                    !activeEnvironmentId ? 'text-accent' : 'text-text-secondary'
+                    !activeEnvironment ? 'text-accent' : 'text-text-secondary'
                   }`}
                 >
-                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${!activeEnvironmentId ? 'bg-accent' : 'bg-text-muted'}`} />
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${!activeEnvironment ? 'bg-accent' : 'bg-text-muted'}`} />
                   <span>No Environment</span>
                 </button>
-                {environments.length > 0 && <div className="border-t border-border my-1" />}
-                {environments.map((env) => (
+                {collectionEnvironments.length > 0 && <div className="border-t border-border my-1" />}
+                {collectionEnvironments.map((env) => (
                   <button
                     key={env.id}
                     onClick={() => {
-                      setActiveEnvironment(env.id)
+                      setActiveEnvironment(rootCollection.id, env.id)
                       setShowEnvDropdown(false)
                     }}
                     className={`w-full px-3 py-2 text-left text-[12px] hover:bg-bg-hover transition-colors flex items-center gap-2.5 ${
-                      env.id === activeEnvironmentId ? 'text-green-500' : 'text-text-secondary'
+                      env.id === activeEnvironment?.id ? 'text-green-500' : 'text-text-secondary'
                     }`}
                   >
-                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${env.id === activeEnvironmentId ? 'bg-green-500' : 'bg-text-muted'}`} />
+                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${env.id === activeEnvironment?.id ? 'bg-green-500' : 'bg-text-muted'}`} />
                     <span className="flex-1 truncate">{env.name}</span>
                     {env.baseUrl && (
                       <span className="text-[10px] text-text-muted truncate max-w-[60px]">
@@ -588,7 +594,7 @@ export function RequestPanel() {
                     )}
                   </button>
                 ))}
-                {environments.length === 0 && (
+                {collectionEnvironments.length === 0 && (
                   <p className="px-3 py-2 text-[11px] text-text-muted">
                     No environments yet
                   </p>
